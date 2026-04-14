@@ -336,12 +336,6 @@ async function decodeAudio(file) {
 
 /* ── Get video duration via FFmpeg probe ─────────────────────── */
 async function getMediaDuration(file, name) {
-  await ffmpeg.writeFile(name, await fetchFile(file));
-  // Use FFmpeg to get duration by running a quick pass
-  try {
-    await ffmpeg.exec(['-i', name, '-f', 'null', '-t', '0.01', '-']);
-  } catch (e) { /* ffmpeg returns error code but logs contain duration */ }
-  // Alternative: use video element
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file);
     const el = document.createElement('video');
@@ -634,9 +628,16 @@ async function createEdit() {
     // Step 3: Style match (optional)
     let refIntervals = null;
     if (refFile) {
-      setStatus('Analyzing reference video…', 35);
-      const refAudio = await decodeAudio(refFile);
+      setStatus('Extracting audio from reference video…', 35);
+      // Extract audio track from reference video using FFmpeg
+      await ffmpeg.writeFile('ref_video.mp4', await fetchFile(refFile));
+      await ffmpeg.exec(['-i', 'ref_video.mp4', '-vn', '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '1', 'ref_audio.wav']);
+      const refAudioData = await ffmpeg.readFile('ref_audio.wav');
+      const refAudioBlob = new Blob([refAudioData.buffer], { type: 'audio/wav' });
+      const refAudio = await decodeAudio(refAudioBlob);
       refIntervals = await extractRefTimings(refAudio);
+      await ffmpeg.deleteFile('ref_video.mp4');
+      await ffmpeg.deleteFile('ref_audio.wav');
     }
 
     // Step 4: Build edit plan
