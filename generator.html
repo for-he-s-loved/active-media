@@ -98,6 +98,17 @@ a:hover{text-decoration:underline}
 .cancel-bar{display:none;text-align:center;margin-top:.5rem}
 .cancel-bar.active{display:block}
 
+/* Upload zone */
+.upload-zone{border:2px dashed #ffffff20;border-radius:var(--radius);padding:2rem;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg)}
+.upload-zone:hover,.upload-zone.dragover{border-color:var(--accent);background:#e9456010}
+.upload-zone .upload-prompt p{margin:.3rem 0;font-size:.9rem;color:var(--text-dim)}
+.clip-list{list-style:none;padding:0;margin-top:.8rem}
+.clip-list li{display:flex;align-items:center;gap:.6rem;padding:.5rem .7rem;background:var(--bg);border-radius:8px;margin-bottom:.4rem;font-size:.82rem;border:1px solid #ffffff08}
+.clip-list li .clip-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clip-list li .clip-size{color:var(--text-dim);font-size:.75rem;flex-shrink:0}
+.clip-list li .clip-remove{background:none;border:none;color:#ff5252;cursor:pointer;font-size:1rem;padding:0 .3rem;line-height:1}
+.clip-list li .clip-remove:hover{color:#ff8a80}
+
 /* Scrollbar */
 ::-webkit-scrollbar{width:6px}
 ::-webkit-scrollbar-track{background:var(--bg)}
@@ -128,7 +139,7 @@ a:hover{text-decoration:underline}
   <section class="card" id="keysCard">
     <h2><span class="icon">🔑</span> API Keys</h2>
     <p style="font-size:.8rem;color:var(--text-dim);margin-bottom:1rem">
-      Keys are stored locally in your browser — never sent anywhere except directly to OpenAI / Pexels.
+      Keys are stored locally in your browser — never sent anywhere except directly to OpenAI.
     </p>
     <div class="form-row">
       <div class="field">
@@ -136,14 +147,27 @@ a:hover{text-decoration:underline}
         <input type="password" id="openaiKey" placeholder="sk-…" autocomplete="off">
         <span class="hint">For script writing (GPT) &amp; narration (TTS)</span>
       </div>
-      <div class="field">
-        <label for="pexelsKey">Pexels API Key</label>
-        <input type="password" id="pexelsKey" placeholder="Pexels key…" autocomplete="off">
-        <span class="hint">Free at <a href="https://www.pexels.com/api/" target="_blank" rel="noopener">pexels.com/api</a></span>
-      </div>
     </div>
     <button class="btn btn-secondary btn-small" id="btnSaveKeys">💾 Save Keys</button>
     <span class="keys-saved" id="keysSaved" style="display:none">✓ Saved</span>
+  </section>
+
+  <!-- Video Clips Upload -->
+  <section class="card" id="uploadCard">
+    <h2><span class="icon">🎥</span> Your Video Clips</h2>
+    <p style="font-size:.8rem;color:var(--text-dim);margin-bottom:1rem">
+      Upload your own footage — YouTube downloads, screen recordings, anything. The tool will auto-clip them to fit each section.
+    </p>
+    <div class="upload-zone" id="uploadZone">
+      <div class="upload-prompt">
+        <span style="font-size:2rem">📁</span>
+        <p>Drag &amp; drop video files here</p>
+        <p style="font-size:.75rem;color:var(--text-dim)">or click to browse · MP4, MOV, WEBM</p>
+      </div>
+      <input type="file" id="fileInput" multiple accept="video/*" style="display:none">
+    </div>
+    <ul class="clip-list" id="clipList"></ul>
+    <p class="hint" style="margin-top:.5rem">💡 No clips? No problem — sections without footage get a stylish animated background.</p>
   </section>
 
   <!-- Subject Input -->
@@ -193,7 +217,7 @@ a:hover{text-decoration:underline}
       <li class="step-detail" id="detail-script"></li>
       <li id="step-narration"><span class="step-icon" id="icon-narration">2</span> Creating narration audio…</li>
       <li class="step-detail" id="detail-narration"></li>
-      <li id="step-video"><span class="step-icon" id="icon-video">3</span> Sourcing video clips…</li>
+      <li id="step-video"><span class="step-icon" id="icon-video">3</span> Assigning video clips…</li>
       <li class="step-detail" id="detail-video"></li>
       <li id="step-compose"><span class="step-icon" id="icon-compose">4</span> Composing final video…</li>
       <li class="step-detail" id="detail-compose"></li>
@@ -249,8 +273,6 @@ const CFG = {
   PRESET: 'ultrafast',
   TITLE_DURATION: 6,
   FADE_DURATION: 0.5,
-  PEXELS_PER_PAGE: 10,
-  PEXELS_DELAY_MS: 350,
   GPT_MODEL: 'gpt-4o-mini',
   TTS_MODEL: 'tts-1',
 };
@@ -263,15 +285,18 @@ let ffmpeg = null;
 let ffmpegReady = false;
 let resultBlob = null;
 let generatedScript = null;
+let uploadedFiles = [];  // Array of File objects
 
 /* ================================================================
    DOM REFS
    ================================================================ */
 const $ = id => document.getElementById(id);
 const openaiKeyInput  = $('openaiKey');
-const pexelsKeyInput  = $('pexelsKey');
 const btnSaveKeys     = $('btnSaveKeys');
 const keysSaved       = $('keysSaved');
+const uploadZone      = $('uploadZone');
+const fileInput       = $('fileInput');
+const clipList        = $('clipList');
 const subjectInput    = $('subjectInput');
 const selVoice        = $('selVoice');
 const selSections     = $('selSections');
@@ -295,31 +320,72 @@ const loadingText     = $('loadingText');
    ================================================================ */
 function loadKeys() {
   const ok = localStorage.getItem('am_openai_key') || '';
-  const pk = localStorage.getItem('am_pexels_key') || '';
   if (ok) openaiKeyInput.value = ok;
-  if (pk) pexelsKeyInput.value = pk;
   updateGenerateBtn();
 }
 
 function saveKeys() {
   localStorage.setItem('am_openai_key', openaiKeyInput.value.trim());
-  localStorage.setItem('am_pexels_key', pexelsKeyInput.value.trim());
   keysSaved.style.display = 'inline';
   setTimeout(() => keysSaved.style.display = 'none', 2000);
   updateGenerateBtn();
 }
 
 function getOpenAIKey() { return (openaiKeyInput.value || localStorage.getItem('am_openai_key') || '').trim(); }
-function getPexelsKey() { return (pexelsKeyInput.value || localStorage.getItem('am_pexels_key') || '').trim(); }
 
 btnSaveKeys.addEventListener('click', saveKeys);
 openaiKeyInput.addEventListener('input', updateGenerateBtn);
-pexelsKeyInput.addEventListener('input', updateGenerateBtn);
 subjectInput.addEventListener('input', updateGenerateBtn);
 
 function updateGenerateBtn() {
-  btnGenerate.disabled = !(getOpenAIKey() && getPexelsKey() && subjectInput.value.trim());
+  btnGenerate.disabled = !(getOpenAIKey() && subjectInput.value.trim());
 }
+
+/* ================================================================
+   FILE UPLOAD HANDLING
+   ================================================================ */
+function addFiles(files) {
+  for (const f of files) {
+    if (!f.type.startsWith('video/')) continue;
+    // Avoid duplicates by name+size
+    if (uploadedFiles.some(u => u.name === f.name && u.size === f.size)) continue;
+    uploadedFiles.push(f);
+  }
+  renderClipList();
+}
+
+function removeFile(index) {
+  uploadedFiles.splice(index, 1);
+  renderClipList();
+}
+
+function renderClipList() {
+  if (uploadedFiles.length === 0) {
+    clipList.innerHTML = '';
+    return;
+  }
+  clipList.innerHTML = uploadedFiles.map((f, i) =>
+    `<li>
+      <span class="clip-name">🎬 ${escapeHtml(f.name)}</span>
+      <span class="clip-size">${formatFileSize(f.size)}</span>
+      <button class="clip-remove" data-idx="${i}" title="Remove">✕</button>
+    </li>`
+  ).join('');
+  clipList.querySelectorAll('.clip-remove').forEach(btn => {
+    btn.addEventListener('click', () => removeFile(parseInt(btn.dataset.idx)));
+  });
+}
+
+// Drag & drop
+uploadZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  addFiles(e.dataTransfer.files);
+});
 
 /* ================================================================
    PIPELINE UI HELPERS
@@ -372,7 +438,7 @@ Output ONLY valid JSON (no markdown fences) with this structure:
     {
       "heading": "Section Title",
       "narration": "Full narration text for this section",
-      "searchTerms": ["stock footage search term 1", "term 2", "term 3"]
+      "visualDescription": "Brief description of ideal visuals for this section"
     }
   ]
 }
@@ -383,7 +449,7 @@ Rules:
 - Use a compelling narrative arc: hook the viewer, provide context, deep-dive into fascinating details, build to insights, end with a memorable conclusion.
 - Include specific facts, dates, statistics, vivid descriptions, and storytelling techniques.
 - Write in an authoritative yet warm and accessible voice — think David Attenborough meets a great YouTube explainer.
-- searchTerms should be simple, visual stock-footage-friendly terms (e.g. "aerial view of coral reef", "timelapse of city at night", "close up of circuit board").
+- visualDescription should briefly describe what kind of footage would work best (e.g. "aerial shots of coral reefs", "time-lapse of a city at night").
 - Make the introduction especially captivating to hook the viewer in the first 30 seconds.`;
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -457,44 +523,21 @@ async function getAudioDuration(blob) {
 }
 
 /* ================================================================
-   PEXELS — VIDEO SEARCH
+   CLIP ASSIGNMENT — DISTRIBUTE UPLOADED FILES ACROSS SECTIONS
    ================================================================ */
-async function searchPexelsVideo(query) {
-  const key = getPexelsKey();
-  const url = `https://api.pexels.com/videos/search?query=${encodeURIComponent(query)}&per_page=${CFG.PEXELS_PER_PAGE}&size=medium&orientation=landscape`;
-  const response = await fetch(url, {
-    headers: { 'Authorization': key }
-  });
-
-  if (!response.ok) {
-    throw new Error(`Pexels error ${response.status}: ${response.statusText}`);
+function assignClipsToSections(numSections) {
+  /* Distribute uploaded files round-robin across sections.
+     Returns an array of length numSections, each element is a File or null. */
+  const assignments = new Array(numSections).fill(null);
+  if (uploadedFiles.length === 0) return assignments;
+  for (let i = 0; i < numSections; i++) {
+    assignments[i] = uploadedFiles[i % uploadedFiles.length];
   }
-
-  const data = await response.json();
-  return data.videos || [];
+  return assignments;
 }
 
-function pickBestVideoFile(videos) {
-  /* Pick the best HD video file from Pexels results */
-  for (const video of videos) {
-    const files = video.video_files || [];
-    // Prefer HD files around 720p-1080p
-    const hd = files
-      .filter(f => f.width >= 1280 && f.height >= 720 && f.file_type === 'video/mp4')
-      .sort((a, b) => a.width - b.width);
-    if (hd.length > 0) return hd[0].link;
-
-    // Fallback: any mp4
-    const mp4 = files.filter(f => f.file_type === 'video/mp4').sort((a, b) => b.width - a.width);
-    if (mp4.length > 0) return mp4[0].link;
-  }
-  return null;
-}
-
-async function downloadVideoFile(url) {
-  const response = await fetch(url, { mode: 'cors' });
-  if (!response.ok) throw new Error(`Download failed: ${response.status}`);
-  return new Uint8Array(await response.arrayBuffer());
+async function readFileAsUint8(file) {
+  return new Uint8Array(await file.arrayBuffer());
 }
 
 /* ================================================================
@@ -701,43 +744,31 @@ async function runPipeline() {
     setStep('narration', 'done', `${narrations.length} audio clips generated`);
     setProgress(30);
 
-    /* ── Step 3: Source Video Clips ──────────────────────── */
-    setStep('video', 'active', 'Searching Pexels for stock footage…');
+    /* ── Step 3: Assign Video Clips ─────────────────────── */
+    setStep('video', 'active', 'Assigning uploaded clips to sections…');
 
+    const clipAssignments = assignClipsToSections(script.sections.length);
     const videoClips = [];  // { data: Uint8Array | null, fallback: boolean }
     for (let i = 0; i < script.sections.length; i++) {
       if (cancelled) throw new Error('Cancelled');
-      const section = script.sections[i];
-      setStep('video', 'active', `Section ${i + 1}/${script.sections.length}: searching "${section.searchTerms[0]}"`);
-
-      let clipData = null;
-      // Try each search term
-      for (const term of section.searchTerms) {
+      const file = clipAssignments[i];
+      if (file) {
+        setStep('video', 'active', `Section ${i + 1}/${script.sections.length}: reading "${file.name}"`);
         try {
-          const videos = await searchPexelsVideo(term);
-          const url = pickBestVideoFile(videos);
-          if (url) {
-            clipData = await downloadVideoFile(url);
-            break;
-          }
+          const data = await readFileAsUint8(file);
+          videoClips.push({ data, fallback: false });
         } catch (err) {
-          console.warn(`Pexels search failed for "${term}":`, err.message);
+          console.warn(`Failed to read file "${file.name}":`, err.message);
+          videoClips.push({ data: null, fallback: true });
         }
-        // Rate limit delay
-        await sleep(CFG.PEXELS_DELAY_MS);
+      } else {
+        videoClips.push({ data: null, fallback: true });
       }
-
-      videoClips.push({ data: clipData, fallback: !clipData });
-
-      if (!clipData) {
-        console.warn(`No video found for section ${i + 1}, will use fallback`);
-      }
-
       setProgress(30 + (i + 1) / script.sections.length * 15);
     }
 
     const foundCount = videoClips.filter(c => !c.fallback).length;
-    setStep('video', 'done', `${foundCount}/${videoClips.length} clips from Pexels, ${videoClips.length - foundCount} fallback`);
+    setStep('video', 'done', `${foundCount}/${videoClips.length} sections with clips, ${videoClips.length - foundCount} fallback`);
     setProgress(45);
 
     /* ── Step 4: Compose Video ───────────────────────────── */
@@ -927,7 +958,7 @@ function renderScriptPreview(script) {
     html += `<div class="script-section">
       <h3>${escapeHtml(sec.heading)}</h3>
       <p>${escapeHtml(sec.narration)}</p>
-      <div class="search-terms">🎥 ${sec.searchTerms.map(escapeHtml).join(' · ')}</div>
+      <div class="search-terms">🎥 ${escapeHtml(sec.visualDescription || '')}</div>
     </div>`;
   }
   scriptPreview.innerHTML = html;

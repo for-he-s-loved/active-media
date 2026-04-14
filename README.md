@@ -4,11 +4,11 @@ Two-in-one browser toolkit for video creators — **no server, no uploads, no in
 
 ## 🎬 Documentary Generator ← NEW
 
-Type any subject and get a full 10+ minute narrated documentary video, assembled automatically:
+Type any subject, upload your own footage, and get a full 10+ minute narrated documentary video, assembled automatically:
 
 1. **AI Script** — GPT writes a compelling multi-section documentary script
 2. **AI Narration** — OpenAI TTS reads the script in a documentary voice
-3. **Stock Footage** — Pexels API supplies matching HD video clips for every section
+3. **Your Footage** — Upload your own video clips (YouTube downloads, screen recordings, anything) and the tool auto-clips them to fit each section
 4. **Auto Compose** — FFmpeg WASM stitches clips + narration with title cards, fades, and proper timing
 5. **Download** — grab the finished MP4 and upload to YouTube
 
@@ -16,9 +16,10 @@ Type any subject and get a full 10+ minute narrated documentary video, assembled
 | Key | Where to get it | Cost |
 |-----|-----------------|------|
 | OpenAI API key | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | Pay-as-you-go (~$0.10–$0.50 per documentary) |
-| Pexels API key | [pexels.com/api](https://www.pexels.com/api/) | Free |
 
 Keys are stored in your browser's localStorage and sent only to their respective APIs.
+
+Upload as many video clips as you like — they're distributed across sections automatically. Sections without clips get a stylish generated background.
 
 ---
 
