@@ -139,13 +139,18 @@ a:hover{text-decoration:underline}
   <section class="card" id="keysCard">
     <h2><span class="icon">🔑</span> API Keys</h2>
     <p style="font-size:.8rem;color:var(--text-dim);margin-bottom:1rem">
-      Keys are stored locally in your browser — never sent anywhere except directly to OpenAI.
+      Keys are stored locally in your browser — never sent anywhere except directly to Groq / OpenAI.
     </p>
     <div class="form-row">
       <div class="field">
+        <label for="groqKey">Groq API Key</label>
+        <input type="password" id="groqKey" placeholder="gsk_…" autocomplete="off">
+        <span class="hint">For script writing (LLM) · Free at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com</a></span>
+      </div>
+      <div class="field">
         <label for="openaiKey">OpenAI API Key</label>
         <input type="password" id="openaiKey" placeholder="sk-…" autocomplete="off">
-        <span class="hint">For script writing (GPT) &amp; narration (TTS)</span>
+        <span class="hint">For narration (TTS) · <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a></span>
       </div>
     </div>
     <button class="btn btn-secondary btn-small" id="btnSaveKeys">💾 Save Keys</button>
@@ -273,7 +278,7 @@ const CFG = {
   PRESET: 'ultrafast',
   TITLE_DURATION: 6,
   FADE_DURATION: 0.5,
-  GPT_MODEL: 'gpt-4o-mini',
+  GROQ_MODEL: 'llama-3.3-70b-versatile',
   TTS_MODEL: 'tts-1',
 };
 
@@ -291,6 +296,7 @@ let uploadedFiles = [];  // Array of File objects
    DOM REFS
    ================================================================ */
 const $ = id => document.getElementById(id);
+const groqKeyInput    = $('groqKey');
 const openaiKeyInput  = $('openaiKey');
 const btnSaveKeys     = $('btnSaveKeys');
 const keysSaved       = $('keysSaved');
@@ -319,26 +325,31 @@ const loadingText     = $('loadingText');
    API KEY MANAGEMENT
    ================================================================ */
 function loadKeys() {
+  const gk = localStorage.getItem('am_groq_key') || '';
   const ok = localStorage.getItem('am_openai_key') || '';
+  if (gk) groqKeyInput.value = gk;
   if (ok) openaiKeyInput.value = ok;
   updateGenerateBtn();
 }
 
 function saveKeys() {
+  localStorage.setItem('am_groq_key', groqKeyInput.value.trim());
   localStorage.setItem('am_openai_key', openaiKeyInput.value.trim());
   keysSaved.style.display = 'inline';
   setTimeout(() => keysSaved.style.display = 'none', 2000);
   updateGenerateBtn();
 }
 
+function getGroqKey() { return (groqKeyInput.value || localStorage.getItem('am_groq_key') || '').trim(); }
 function getOpenAIKey() { return (openaiKeyInput.value || localStorage.getItem('am_openai_key') || '').trim(); }
 
 btnSaveKeys.addEventListener('click', saveKeys);
+groqKeyInput.addEventListener('input', updateGenerateBtn);
 openaiKeyInput.addEventListener('input', updateGenerateBtn);
 subjectInput.addEventListener('input', updateGenerateBtn);
 
 function updateGenerateBtn() {
-  btnGenerate.disabled = !(getOpenAIKey() && subjectInput.value.trim());
+  btnGenerate.disabled = !(getGroqKey() && getOpenAIKey() && subjectInput.value.trim());
 }
 
 /* ================================================================
@@ -425,10 +436,10 @@ function showError(stepName, msg) {
 }
 
 /* ================================================================
-   OPENAI — SCRIPT GENERATION
+   GROQ — SCRIPT GENERATION
    ================================================================ */
 async function generateScript(subject, numSections) {
-  const key = getOpenAIKey();
+  const key = getGroqKey();
   const systemPrompt = `You are an award-winning documentary scriptwriter for YouTube. Write a compelling, educational, and deeply engaging documentary script.
 
 Output ONLY valid JSON (no markdown fences) with this structure:
@@ -452,11 +463,11 @@ Rules:
 - visualDescription should briefly describe what kind of footage would work best (e.g. "aerial shots of coral reefs", "time-lapse of a city at night").
 - Make the introduction especially captivating to hook the viewer in the first 30 seconds.`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
     body: JSON.stringify({
-      model: CFG.GPT_MODEL,
+      model: CFG.GROQ_MODEL,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Create a documentary script about: ${subject}` }
@@ -468,7 +479,7 @@ Rules:
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
-    throw new Error(`OpenAI error ${response.status}: ${err.error?.message || response.statusText}`);
+    throw new Error(`Groq error ${response.status}: ${err.error?.message || response.statusText}`);
   }
 
   const data = await response.json();
@@ -479,7 +490,7 @@ Rules:
 
   const script = JSON.parse(content);
   if (!script.title || !Array.isArray(script.sections) || script.sections.length === 0) {
-    throw new Error('Invalid script format received from OpenAI');
+    throw new Error('Invalid script format received from Groq');
   }
   return script;
 }
@@ -713,7 +724,7 @@ async function runPipeline() {
 
   try {
     /* ── Step 1: Generate Script ─────────────────────────── */
-    setStep('script', 'active', 'Calling OpenAI GPT…');
+    setStep('script', 'active', 'Calling Groq LLM…');
     setProgress(2);
 
     const script = await generateScript(subject, numSections);

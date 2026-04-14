@@ -6,7 +6,7 @@ Two-in-one browser toolkit for video creators — **no server, no uploads, no in
 
 Type any subject, upload your own footage, and get a full 10+ minute narrated documentary video, assembled automatically:
 
-1. **AI Script** — GPT writes a compelling multi-section documentary script
+1. **AI Script** — Groq LLM writes a compelling multi-section documentary script (fast & free)
 2. **AI Narration** — OpenAI TTS reads the script in a documentary voice
 3. **Your Footage** — Upload your own video clips (YouTube downloads, screen recordings, anything) and the tool auto-clips them to fit each section
 4. **Auto Compose** — FFmpeg WASM stitches clips + narration with title cards, fades, and proper timing
@@ -15,7 +15,8 @@ Type any subject, upload your own footage, and get a full 10+ minute narrated do
 ### Requirements
 | Key | Where to get it | Cost |
 |-----|-----------------|------|
-| OpenAI API key | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | Pay-as-you-go (~$0.10–$0.50 per documentary) |
+| Groq API key | [console.groq.com/keys](https://console.groq.com/keys) | Free |
+| OpenAI API key | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | Pay-as-you-go (TTS narration only, ~$0.05–$0.30 per documentary) |
 
 Keys are stored in your browser's localStorage and sent only to their respective APIs.
 
