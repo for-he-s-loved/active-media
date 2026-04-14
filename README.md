@@ -20,8 +20,8 @@ Open the GitHub Pages URL and:
 
 First run downloads ~30 MB of FFmpeg WASM (cached by your browser after that).
 
-## Host on GitHub Pages
-1. Create a new GitHub repo (e.g. `video-edit-portal`)
-2. Push the contents of this folder to the `main` branch
-3. Go to repo **Settings → Pages → Source → Deploy from branch → main / root**
-4. Your portal will be live at `https://YOUR_USERNAME.github.io/video-edit-portal/`
+## Live Site
+
+🌐 **https://for-he-s-loved.github.io/active-media/**
+
+Deployment is automated via GitHub Actions — every push to `main` redeploys the site.
