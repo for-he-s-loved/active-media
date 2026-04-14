@@ -1,118 +1,750 @@
-/*! coi-serviceworker v0.1.7 - Guido Zuidhof and contributors, licensed under MIT */
-let coepCredentialless = false;
-if (typeof window === 'undefined') {
-    self.addEventListener("install", () => self.skipWaiting());
-    self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
-
-    self.addEventListener("message", (ev) => {
-        if (!ev.data) {
-            return;
-        } else if (ev.data.type === "deregister") {
-            self.registration
-                .unregister()
-                .then(() => {
-                    return self.clients.matchAll();
-                })
-                .then(clients => {
-                    clients.forEach((client) => client.navigate(client.url));
-                });
-        } else if (ev.data.type === "coepCredentialless") {
-            coepCredentialless = ev.data.value;
-        }
-    });
-
-    self.addEventListener("fetch", function (event) {
-        const r = event.request;
-        if (r.cache === "only-if-cached" && r.mode !== "same-origin") {
-            return;
-        }
-
-        const request = (coepCredentialless && r.mode === "no-cors")
-            ? new Request(r, {
-                credentials: "omit",
-            })
-            : r;
-        event.respondWith(
-            fetch(request)
-                .then((response) => {
-                    if (response.status === 0) {
-                        return response;
-                    }
-
-                    const newHeaders = new Headers(response.headers);
-                    newHeaders.set("Cross-Origin-Embedder-Policy",
-                        coepCredentialless ? "credentialless" : "require-corp"
-                    );
-                    if (!coepCredentialless) {
-                        newHeaders.set("Cross-Origin-Resource-Policy", "cross-origin");
-                    }
-                    newHeaders.set("Cross-Origin-Opener-Policy", "same-origin");
-
-                    return new Response(response.body, {
-                        status: response.status,
-                        statusText: response.statusText,
-                        headers: newHeaders,
-                    });
-                })
-                .catch((e) => console.error(e))
-        );
-    });
-
-} else {
-    (() => {
-        // You can customize the behavior of this script through a global `coi` variable.
-        const coi = {
-            shouldRegister: () => true,
-            shouldDeregister: () => false,
-            coepCredentialless: () => !(window.chrome || window.netscape),
-            doReload: () => window.location.reload(),
-            quiet: false,
-            ...window.coi
-        };
-
-        const n = navigator;
-
-        if (n.serviceWorker && n.serviceWorker.controller) {
-            n.serviceWorker.controller.postMessage({
-                type: "coepCredentialless",
-                value: coi.coepCredentialless(),
-            });
-
-            if (coi.shouldDeregister()) {
-                n.serviceWorker.controller.postMessage({ type: "deregister" });
-            }
-        }
-
-        // If we're already coi: do nothing. Perhaps it's due to this script doing its job, or COOP/COEP are
-        // already set from the origin server. Also if the browser has no notion of crossOriginIsolated, just give up here.
-        if (window.crossOriginIsolated !== false || !coi.shouldRegister()) return;
-
-        if (!window.isSecureContext) {
-            !coi.quiet && console.log("COOP/COEP Service Worker not registered, a secure context is required.");
-            return;
-        }
-
-        // In some environments (e.g. Chrome incognito mode) this won't be available
-        if (n.serviceWorker) {
-            n.serviceWorker.register(window.document.currentScript.src).then(
-                (registration) => {
-                    !coi.quiet && console.log("COOP/COEP Service Worker registered", registration.scope);
-
-                    registration.addEventListener("updatefound", () => {
-                        !coi.quiet && console.log("Reloading page to make use of updated COOP/COEP Service Worker.");
-                        coi.doReload();
-                    });
-
-                    // If the registration is active, but it's not controlling the page
-                    if (registration.active && !n.serviceWorker.controller) {
-                        !coi.quiet && console.log("Reloading page to make use of COOP/COEP Service Worker.");
-                        coi.doReload();
-                    }
-                },
-                (err) => {
-                    !coi.quiet && console.error("COOP/COEP Service Worker failed to register:", err);
-                }
-            );
-        }
-    })();
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚡ Jarvis Video Edit Portal</title>
+<script src="coi-serviceworker.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0d0d;--surface:#1a1a2e;--surface2:#16213e;--accent:#e94560;
+  --accent2:#0f3460;--text:#e0e0e0;--text-dim:#888;--radius:10px;
+  --green:#00e676;--yellow:#ffd600;
 }
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+a{color:var(--accent)}
+
+/* Header */
+.header{background:linear-gradient(135deg,var(--surface2),var(--surface));padding:1.2rem 2rem;display:flex;align-items:center;gap:1rem;border-bottom:2px solid var(--accent);position:sticky;top:0;z-index:100;backdrop-filter:blur(10px)}
+.header h1{font-size:1.5rem;font-weight:700;background:linear-gradient(90deg,var(--accent),var(--yellow));-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-.5px}
+.header .subtitle{font-size:.8rem;color:var(--text-dim);margin-left:auto}
+
+/* Main layout */
+.main{max-width:1100px;margin:0 auto;padding:1.5rem}
+.card{background:var(--surface);border:1px solid #ffffff10;border-radius:var(--radius);padding:1.5rem;margin-bottom:1.2rem}
+.card h2{font-size:1.1rem;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem}
+.card h2 .icon{font-size:1.3rem}
+
+/* File inputs */
+.file-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem}
+.file-drop{border:2px dashed #ffffff20;border-radius:var(--radius);padding:2rem 1.5rem;text-align:center;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.file-drop:hover,.file-drop.dragover{border-color:var(--accent);background:#ffffff05}
+.file-drop .label{font-weight:600;margin-bottom:.3rem}
+.file-drop .hint{font-size:.75rem;color:var(--text-dim)}
+.file-drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.file-drop .file-name{margin-top:.5rem;font-size:.8rem;color:var(--green);word-break:break-all}
+
+/* Settings */
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:1rem}
+.setting{display:flex;flex-direction:column;gap:.4rem}
+.setting label{font-size:.85rem;font-weight:500;color:var(--text-dim)}
+.setting select,.setting input[type=range]{width:100%;padding:.5rem;background:var(--bg);color:var(--text);border:1px solid #ffffff15;border-radius:6px;font-size:.9rem}
+.setting select{cursor:pointer;appearance:auto}
+.setting input[type=range]{-webkit-appearance:none;height:6px;border-radius:3px;background:#333;cursor:pointer}
+.setting input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);cursor:pointer}
+.range-labels{display:flex;justify-content:space-between;font-size:.7rem;color:var(--text-dim)}
+.range-val{font-size:.8rem;color:var(--accent);font-weight:600}
+
+/* Create button */
+.create-btn{display:flex;align-items:center;justify-content:center;gap:.5rem;width:100%;padding:1rem;font-size:1.15rem;font-weight:700;border:none;border-radius:var(--radius);background:linear-gradient(135deg,var(--accent),#c0392b);color:#fff;cursor:pointer;transition:all .25s;text-transform:uppercase;letter-spacing:1px}
+.create-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 25px #e9456050}
+.create-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.create-btn:active:not(:disabled){transform:translateY(0)}
+
+/* Progress */
+.progress-section{display:none}
+.progress-section.active{display:block}
+.progress-bar-outer{width:100%;height:10px;background:#222;border-radius:5px;overflow:hidden;margin:.8rem 0}
+.progress-bar-inner{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--yellow));border-radius:5px;transition:width .3s}
+.status-text{font-size:.85rem;color:var(--text-dim);min-height:1.2em}
+.status-text.error{color:#ff5252}
+
+/* Preview */
+.preview-section{display:none}
+.preview-section.active{display:flex;flex-direction:column;align-items:center}
+.preview-section video{width:100%;max-width:720px;border-radius:var(--radius);background:#000;margin-bottom:1rem}
+.dl-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.75rem 2rem;font-size:1rem;font-weight:600;border:none;border-radius:var(--radius);background:var(--green);color:#000;cursor:pointer;transition:all .2s}
+.dl-btn:hover{transform:translateY(-2px);box-shadow:0 4px 15px #00e67640}
+
+/* Loading overlay */
+.loading-overlay{display:none;position:fixed;inset:0;background:#000c;z-index:200;align-items:center;justify-content:center;flex-direction:column;gap:1rem}
+.loading-overlay.active{display:flex}
+.spinner{width:50px;height:50px;border:4px solid #333;border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Responsive */
+@media(max-width:600px){
+  .header{padding:.8rem 1rem}
+  .header h1{font-size:1.2rem}
+  .main{padding:1rem .75rem}
+  .card{padding:1rem}
+}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <h1>⚡ Jarvis Video Edit Portal</h1>
+  <span class="subtitle">Beat-synced auto editor · 100% in-browser</span>
+</header>
+
+<main class="main">
+
+  <!-- File Inputs -->
+  <section class="card">
+    <h2><span class="icon">📁</span> Media Files</h2>
+    <div class="file-grid">
+      <div class="file-drop" id="dropVideo">
+        <div class="label">🎬 Source Video</div>
+        <div class="hint">MP4, WebM, MOV — drag & drop or click</div>
+        <input type="file" accept="video/*" id="inputVideo">
+        <div class="file-name" id="nameVideo"></div>
+      </div>
+      <div class="file-drop" id="dropMusic">
+        <div class="label">🎵 Music File</div>
+        <div class="hint">MP3, WAV, M4A, OGG</div>
+        <input type="file" accept="audio/*" id="inputMusic">
+        <div class="file-name" id="nameMusic"></div>
+      </div>
+      <div class="file-drop" id="dropRef">
+        <div class="label">🎯 Reference Video <em>(optional — Style Match)</em></div>
+        <div class="hint">Analyse pacing from another edit</div>
+        <input type="file" accept="video/*" id="inputRef">
+        <div class="file-name" id="nameRef"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Settings -->
+  <section class="card">
+    <h2><span class="icon">⚙️</span> Settings</h2>
+    <div class="settings-grid">
+      <div class="setting">
+        <label for="selTransition">Transition Style</label>
+        <select id="selTransition">
+          <option value="zoom">Auto zoom-punch</option>
+          <option value="hard">Hard cuts</option>
+          <option value="fade">Soft fade</option>
+          <option value="grow">Center Grow</option>
+        </select>
+      </div>
+      <div class="setting">
+        <label>Output Length: <span class="range-val" id="valLength">30</span>s</label>
+        <input type="range" id="sliderLength" min="5" max="120" value="30" step="1">
+        <div class="range-labels"><span>5 s</span><span>120 s</span></div>
+      </div>
+      <div class="setting">
+        <label>Beat Sensitivity: <span class="range-val" id="valSens">50</span>%</label>
+        <input type="range" id="sliderSens" min="10" max="100" value="50" step="1">
+        <div class="range-labels"><span>Low</span><span>High</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Create Button -->
+  <section class="card" style="text-align:center">
+    <button class="create-btn" id="btnCreate" disabled>⚡ Create Edit</button>
+  </section>
+
+  <!-- Progress -->
+  <section class="card progress-section" id="progressSection">
+    <h2><span class="icon">⏳</span> Processing</h2>
+    <div class="progress-bar-outer"><div class="progress-bar-inner" id="progressBar"></div></div>
+    <div class="status-text" id="statusText">Initializing…</div>
+  </section>
+
+  <!-- Preview / Download -->
+  <section class="card preview-section" id="previewSection">
+    <h2><span class="icon">🎥</span> Preview</h2>
+    <video id="previewVideo" controls></video>
+    <button class="dl-btn" id="btnDownload">⬇️ Download MP4</button>
+  </section>
+
+</main>
+
+<!-- Loading overlay for FFmpeg init -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div style="color:#ccc;font-size:.9rem" id="loadingText">Loading FFmpeg WASM (~31 MB first time)…</div>
+</div>
+
+<!-- FFmpeg WASM -->
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/umd/ffmpeg.js"></script>
+<script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/util.js"></script>
+
+<script>
+"use strict";
+
+/* ── globals ─────────────────────────────────────────────────── */
+const { FFmpeg } = FFmpegWASM;
+const { fetchFile } = FFmpegUtil;
+
+let ffmpeg = null;
+let ffmpegReady = false;
+let videoFile = null;
+let musicFile = null;
+let refFile = null;
+let resultBlob = null;
+
+/* ── DOM refs ────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+const inputVideo = $('inputVideo'), inputMusic = $('inputMusic'), inputRef = $('inputRef');
+const nameVideo = $('nameVideo'), nameMusic = $('nameMusic'), nameRef = $('nameRef');
+const selTransition = $('selTransition');
+const sliderLength = $('sliderLength'), valLength = $('valLength');
+const sliderSens = $('sliderSens'), valSens = $('valSens');
+const btnCreate = $('btnCreate');
+const progressSection = $('progressSection'), progressBar = $('progressBar'), statusText = $('statusText');
+const previewSection = $('previewSection'), previewVideo = $('previewVideo'), btnDownload = $('btnDownload');
+const loadingOverlay = $('loadingOverlay'), loadingText = $('loadingText');
+
+/* ── file input wiring ───────────────────────────────────────── */
+function wireFileDrop(dropEl, inputEl, nameEl, setter) {
+  inputEl.addEventListener('change', () => {
+    if (inputEl.files[0]) { setter(inputEl.files[0]); nameEl.textContent = inputEl.files[0].name; updateBtn(); }
+  });
+  dropEl.addEventListener('dragover', e => { e.preventDefault(); dropEl.classList.add('dragover'); });
+  dropEl.addEventListener('dragleave', () => dropEl.classList.remove('dragover'));
+  dropEl.addEventListener('drop', e => {
+    e.preventDefault(); dropEl.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f) { setter(f); nameEl.textContent = f.name; inputEl.files = e.dataTransfer.files; updateBtn(); }
+  });
+}
+wireFileDrop($('dropVideo'), inputVideo, nameVideo, f => { videoFile = f; });
+wireFileDrop($('dropMusic'), inputMusic, nameMusic, f => { musicFile = f; });
+wireFileDrop($('dropRef'), inputRef, nameRef, f => { refFile = f; });
+
+/* ── sliders ─────────────────────────────────────────────────── */
+sliderLength.addEventListener('input', () => { valLength.textContent = sliderLength.value; });
+sliderSens.addEventListener('input', () => { valSens.textContent = sliderSens.value; });
+
+function updateBtn() {
+  btnCreate.disabled = !(videoFile && musicFile);
+}
+
+/* ── FFmpeg init ─────────────────────────────────────────────── */
+async function initFFmpeg() {
+  if (ffmpegReady) return;
+  loadingOverlay.classList.add('active');
+  try {
+    ffmpeg = new FFmpeg();
+    ffmpeg.on('log', ({ message }) => {
+      console.log('[ffmpeg]', message);
+    });
+    ffmpeg.on('progress', ({ progress }) => {
+      if (progressSection.classList.contains('active')) {
+        const pct = Math.min(100, Math.round(progress * 100));
+        progressBar.style.width = pct + '%';
+      }
+    });
+    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+    await ffmpeg.load({
+      coreURL: `${baseURL}/ffmpeg-core.js`,
+      wasmURL: `${baseURL}/ffmpeg-core.wasm`,
+    });
+    ffmpegReady = true;
+    loadingText.textContent = 'FFmpeg ready ✓';
+  } catch (err) {
+    loadingText.textContent = 'Failed to load FFmpeg: ' + err.message;
+    console.error(err);
+    throw err;
+  } finally {
+    setTimeout(() => loadingOverlay.classList.remove('active'), 600);
+  }
+}
+
+/* ── Tuning constants ────────────────────────────────────────── */
+const MOTION_WEIGHT = 0.6;
+const COLOR_WEIGHT = 0.4;
+const ZOOM_INCREMENT = 0.002;
+const MAX_ZOOM = 1.15;
+const GROW_DURATION_FRAMES = 3;
+const GROW_MAX_SCALE = 1.3;
+const GROW_DECAY_RATE = 0.008;
+
+/* ── Beat detection via Web Audio API ────────────────────────── */
+async function detectBeats(audioBuffer, sensitivity) {
+  const chan = audioBuffer.getChannelData(0);
+  const sr = audioBuffer.sampleRate;
+  const hopSize = Math.round(sr * 0.01); // 10 ms hop
+  const frameSize = Math.round(sr * 0.025); // 25 ms frame
+
+  // Compute onset envelope: RMS energy per frame
+  const numFrames = Math.floor((chan.length - frameSize) / hopSize);
+  const energy = new Float32Array(numFrames);
+  for (let i = 0; i < numFrames; i++) {
+    let sum = 0;
+    const off = i * hopSize;
+    for (let j = 0; j < frameSize; j++) {
+      sum += chan[off + j] * chan[off + j];
+    }
+    energy[i] = Math.sqrt(sum / frameSize);
+  }
+
+  // Spectral flux style onset detection
+  const diff = new Float32Array(numFrames);
+  for (let i = 1; i < numFrames; i++) {
+    diff[i] = Math.max(0, energy[i] - energy[i - 1]);
+  }
+
+  // Adaptive threshold
+  const threshWindow = 30;
+  const sensFactor = 1.0 + (1.0 - sensitivity / 100) * 2.0; // lower sensitivity = higher threshold
+  const beats = [];
+  const minBeatGap = 0.12; // seconds
+
+  for (let i = threshWindow; i < numFrames - threshWindow; i++) {
+    let localMean = 0;
+    for (let j = i - threshWindow; j <= i + threshWindow; j++) {
+      localMean += diff[j];
+    }
+    localMean /= (threshWindow * 2 + 1);
+    const threshold = localMean * sensFactor + 0.001;
+
+    if (diff[i] > threshold && diff[i] >= diff[i - 1] && diff[i] >= diff[i + 1]) {
+      const timeSec = (i * hopSize) / sr;
+      if (beats.length === 0 || timeSec - beats[beats.length - 1].time >= minBeatGap) {
+        beats.push({ time: timeSec, strength: diff[i] });
+      }
+    }
+  }
+
+  // Classify beat strength: strong (top 20%), medium (next 30%), weak (rest)
+  const sorted = [...beats].sort((a, b) => b.strength - a.strength);
+  const strongThresh = sorted[Math.floor(sorted.length * 0.2)]?.strength ?? 0;
+  const medThresh = sorted[Math.floor(sorted.length * 0.5)]?.strength ?? 0;
+
+  for (const b of beats) {
+    if (b.strength >= strongThresh) b.type = 'strong';
+    else if (b.strength >= medThresh) b.type = 'medium';
+    else b.type = 'weak';
+  }
+
+  return beats;
+}
+
+/* ── Decode audio from file ──────────────────────────────────── */
+async function decodeAudio(file) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const buf = await file.arrayBuffer();
+  const decoded = await ctx.decodeAudioData(buf);
+  ctx.close();
+  return decoded;
+}
+
+/* ── Get video duration via FFmpeg probe ─────────────────────── */
+async function getMediaDuration(file, name) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const el = document.createElement('video');
+    el.preload = 'metadata';
+    el.onloadedmetadata = () => {
+      const dur = el.duration;
+      URL.revokeObjectURL(url);
+      resolve(dur);
+    };
+    el.onerror = () => { URL.revokeObjectURL(url); resolve(60); };
+    el.src = url;
+  });
+}
+
+/* ── Scene scoring: sample video, score motion + color energy ── */
+async function scoreScenes(file, intervalSec = 1.0) {
+  const duration = await new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const vid = document.createElement('video');
+    vid.preload = 'metadata';
+    vid.onloadedmetadata = () => { resolve(vid.duration); URL.revokeObjectURL(url); };
+    vid.onerror = () => { URL.revokeObjectURL(url); resolve(30); };
+    vid.src = url;
+  });
+
+  const numSamples = Math.min(Math.floor(duration / intervalSec), 200);
+  const scenes = [];
+  for (let i = 0; i < numSamples; i++) {
+    scenes.push({
+      index: i,
+      startTime: i * intervalSec,
+      endTime: (i + 1) * intervalSec,
+      motionScore: 0,
+      colorScore: 0,
+      totalScore: 0
+    });
+  }
+
+  // Sample frames using canvas + video
+  const url = URL.createObjectURL(file);
+  const vid = document.createElement('video');
+  vid.muted = true;
+  vid.preload = 'auto';
+  vid.src = url;
+
+  await new Promise((resolve, reject) => {
+    vid.oncanplaythrough = resolve;
+    vid.onerror = reject;
+    vid.load();
+  });
+
+  const canvas = document.createElement('canvas');
+  const sampleW = 160, sampleH = 90;
+  canvas.width = sampleW; canvas.height = sampleH;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  let prevData = null;
+  for (let i = 0; i < scenes.length; i++) {
+    const t = scenes[i].startTime + intervalSec * 0.5;
+    if (t > duration) break;
+    vid.currentTime = Math.min(t, duration - 0.1);
+    await new Promise(r => { vid.onseeked = r; });
+
+    ctx.drawImage(vid, 0, 0, sampleW, sampleH);
+    const imgData = ctx.getImageData(0, 0, sampleW, sampleH);
+    const px = imgData.data;
+
+    // Color energy: variance of saturation
+    let satSum = 0, satSqSum = 0, count = px.length / 4;
+    for (let j = 0; j < px.length; j += 4) {
+      const r = px[j], g = px[j+1], b = px[j+2];
+      const maxC = Math.max(r, g, b), minC = Math.min(r, g, b);
+      const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
+      satSum += sat;
+      satSqSum += sat * sat;
+    }
+    const satMean = satSum / count;
+    const satVar = satSqSum / count - satMean * satMean;
+    scenes[i].colorScore = satVar * 100 + satMean * 10;
+
+    // Motion score: pixel difference from previous frame
+    if (prevData) {
+      let diffSum = 0;
+      for (let j = 0; j < px.length; j += 4) {
+        diffSum += Math.abs(px[j] - prevData[j]) + Math.abs(px[j+1] - prevData[j+1]) + Math.abs(px[j+2] - prevData[j+2]);
+      }
+      scenes[i].motionScore = diffSum / (count * 3 * 255) * 100;
+    }
+    prevData = new Uint8Array(px);
+
+    scenes[i].totalScore = scenes[i].motionScore * MOTION_WEIGHT + scenes[i].colorScore * COLOR_WEIGHT;
+  }
+
+  URL.revokeObjectURL(url);
+  vid.remove();
+  return { scenes, duration };
+}
+
+/* ── Style Match: extract cut timings from reference video ───── */
+async function extractRefTimings(refAudioBuffer) {
+  const beats = await detectBeats(refAudioBuffer, 60);
+  // Use strong beats as cut points
+  const cuts = beats.filter(b => b.type === 'strong' || b.type === 'medium').map(b => b.time);
+  if (cuts.length < 2) {
+    // Fallback: use all beats
+    return beats.map(b => b.time);
+  }
+  // Convert to intervals
+  const intervals = [];
+  for (let i = 1; i < cuts.length; i++) {
+    intervals.push(cuts[i] - cuts[i - 1]);
+  }
+  return intervals;
+}
+
+/* ── Build edit plan ─────────────────────────────────────────── */
+function buildEditPlan(beats, scenes, targetDuration, refIntervals) {
+  // Get cut points from beats
+  let cutBeats;
+  if (refIntervals && refIntervals.length > 0) {
+    // Style Match: use reference timing intervals, cycling through them
+    cutBeats = [];
+    let t = 0;
+    let idx = 0;
+    while (t < targetDuration) {
+      const interval = refIntervals[idx % refIntervals.length];
+      t += interval;
+      if (t < targetDuration) {
+        // Find closest beat to this time
+        let closest = beats.reduce((prev, curr) =>
+          Math.abs(curr.time - t) < Math.abs(prev.time - t) ? curr : prev
+        );
+        cutBeats.push(closest);
+      }
+      idx++;
+    }
+  } else {
+    // Use strong/medium beats as cut points
+    cutBeats = beats.filter(b => b.type === 'strong' || b.type === 'medium');
+    if (cutBeats.length < 3) cutBeats = beats.filter(b => b.type === 'strong' || b.type === 'medium' || b.type === 'weak');
+  }
+
+  // Ensure cuts are within target duration and spaced out
+  const minCutGap = 0.4;
+  const filteredCuts = [];
+  let lastCutTime = 0;
+  for (const b of cutBeats) {
+    if (b.time >= targetDuration) break;
+    if (b.time - lastCutTime >= minCutGap) {
+      filteredCuts.push(b);
+      lastCutTime = b.time;
+    }
+  }
+
+  // Sort scenes by score, pick best for each segment
+  const rankedScenes = [...scenes].sort((a, b) => b.totalScore - a.totalScore);
+
+  const segments = [];
+  const usedScenes = new Set();
+  let musicTime = 0;
+
+  for (let i = 0; i < filteredCuts.length; i++) {
+    const cutTime = filteredCuts[i].time;
+    const nextCut = filteredCuts[i + 1]?.time ?? targetDuration;
+    const segDuration = nextCut - cutTime;
+    if (segDuration < 0.2) continue;
+
+    // Pick best unused scene
+    let bestScene = rankedScenes.find(s => !usedScenes.has(s.index));
+    if (!bestScene) {
+      usedScenes.clear();
+      bestScene = rankedScenes[0];
+    }
+    usedScenes.add(bestScene.index);
+
+    segments.push({
+      sceneStart: bestScene.startTime,
+      sceneDuration: Math.min(segDuration, bestScene.endTime - bestScene.startTime, 2.0),
+      musicStart: cutTime,
+      duration: segDuration,
+      beatStrength: filteredCuts[i].type,
+      flash: filteredCuts[i].type === 'strong'
+    });
+    musicTime = nextCut;
+  }
+
+  return segments;
+}
+
+/* ── Build FFmpeg filter graph ───────────────────────────────── */
+function buildFilterComplex(segments, transition, videoWidth, videoHeight) {
+  if (segments.length === 0) return { filter: '', lastLabel: '' };
+
+  const filters = [];
+  const trDuration = transition === 'hard' ? 0 : 0.15;
+
+  // Trim each segment from the source video
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const ss = seg.sceneStart.toFixed(3);
+    const dur = seg.duration.toFixed(3);
+
+    filters.push(`[0:v]trim=start=${ss}:duration=${dur},setpts=PTS-STARTPTS,scale=${videoWidth}:${videoHeight}:force_original_aspect_ratio=decrease,pad=${videoWidth}:${videoHeight}:(ow-iw)/2:(oh-ih)/2[v${i}]`);
+
+    // Apply effects per segment
+    let label = `v${i}`;
+    let effectFilters = [];
+
+    // Flash on strong beats: brief brightness boost at start
+    if (seg.flash) {
+      effectFilters.push(`eq=brightness=0.15:saturation=1.3`);
+    }
+
+    // Zoom-punch effect
+    if (transition === 'zoom') {
+      effectFilters.push(`zoompan=z='min(zoom+${ZOOM_INCREMENT},${MAX_ZOOM})':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${videoWidth}x${videoHeight}`);
+    }
+
+    // Center grow
+    if (transition === 'grow') {
+      effectFilters.push(`zoompan=z='if(lte(on,${GROW_DURATION_FRAMES}),${GROW_MAX_SCALE},max(zoom-${GROW_DECAY_RATE},1))':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${videoWidth}x${videoHeight}`);
+    }
+
+    if (effectFilters.length > 0) {
+      const newLabel = `ve${i}`;
+      filters.push(`[${label}]${effectFilters.join(',')}[${newLabel}]`);
+      label = newLabel;
+    }
+
+    // Color grading + vignette
+    const cgLabel = `vcg${i}`;
+    filters.push(`[${label}]eq=saturation=1.2:contrast=1.1,vignette=PI/5[${cgLabel}]`);
+    segments[i]._label = cgLabel;
+  }
+
+  // Concatenate all segments
+  let concatInput = '';
+  for (let i = 0; i < segments.length; i++) {
+    concatInput += `[${segments[i]._label}]`;
+  }
+
+  const concatLabel = 'outv';
+
+  if (transition === 'fade' && segments.length > 1) {
+    // For fade: xfade between consecutive segments
+    let prevLabel = segments[0]._label;
+    for (let i = 1; i < segments.length; i++) {
+      const outLabel = i === segments.length - 1 ? concatLabel : `xf${i}`;
+      const offset = Math.max(0, segments.slice(0, i).reduce((sum, s) => sum + s.duration, 0) - trDuration * i).toFixed(3);
+      filters.push(`[${prevLabel}][${segments[i]._label}]xfade=transition=fade:duration=${trDuration}:offset=${offset}[${outLabel}]`);
+      prevLabel = outLabel;
+    }
+  } else {
+    // Hard cuts / zoom / grow: simple concat
+    filters.push(`${concatInput}concat=n=${segments.length}:v=1:a=0[${concatLabel}]`);
+  }
+
+  return { filter: filters.join(';'), lastLabel: concatLabel };
+}
+
+/* ── Main create flow ────────────────────────────────────────── */
+async function createEdit() {
+  const targetDuration = parseInt(sliderLength.value);
+  const sensitivity = parseInt(sliderSens.value);
+  const transition = selTransition.value;
+
+  // Show progress
+  progressSection.classList.add('active');
+  previewSection.classList.remove('active');
+  resultBlob = null;
+  progressBar.style.width = '0%';
+  statusText.textContent = 'Loading FFmpeg…';
+  statusText.classList.remove('error');
+
+  try {
+    await initFFmpeg();
+
+    // Step 1: Decode music and detect beats
+    setStatus('Decoding music…', 5);
+    const audioBuffer = await decodeAudio(musicFile);
+
+    setStatus('Detecting beats…', 15);
+    const beats = await detectBeats(audioBuffer, sensitivity);
+    if (beats.length < 2) throw new Error('Could not detect enough beats. Try a different track or adjust sensitivity.');
+
+    // Step 2: Score video scenes
+    setStatus('Analyzing video scenes…', 25);
+    const { scenes, duration: videoDuration } = await scoreScenes(videoFile, 0.5);
+
+    // Step 3: Style match (optional)
+    let refIntervals = null;
+    if (refFile) {
+      setStatus('Extracting audio from reference video…', 35);
+      // Extract audio track from reference video using FFmpeg
+      await ffmpeg.writeFile('ref_video.mp4', await fetchFile(refFile));
+      await ffmpeg.exec(['-i', 'ref_video.mp4', '-vn', '-acodec', 'pcm_s16le', '-ar', '44100', '-ac', '1', 'ref_audio.wav']);
+      const refAudioData = await ffmpeg.readFile('ref_audio.wav');
+      const refAudioBlob = new Blob([refAudioData.buffer], { type: 'audio/wav' });
+      const refAudio = await decodeAudio(refAudioBlob);
+      refIntervals = await extractRefTimings(refAudio);
+      await ffmpeg.deleteFile('ref_video.mp4');
+      await ffmpeg.deleteFile('ref_audio.wav');
+    }
+
+    // Step 4: Build edit plan
+    setStatus('Building edit plan…', 40);
+    const segments = buildEditPlan(beats, scenes, Math.min(targetDuration, videoDuration, audioBuffer.duration), refIntervals);
+    if (segments.length === 0) throw new Error('No segments could be created. Try adjusting settings.');
+
+    // Step 5: Get video dimensions
+    const videoMeta = await getVideoDimensions(videoFile);
+    const vw = videoMeta.width || 1280;
+    const vh = videoMeta.height || 720;
+
+    // Step 6: Write files to FFmpeg FS
+    setStatus('Loading files into editor…', 50);
+    await ffmpeg.writeFile('input.mp4', await fetchFile(videoFile));
+    await ffmpeg.writeFile('music.mp3', await fetchFile(musicFile));
+
+    // Step 7: Build filter and run FFmpeg
+    setStatus('Rendering video…', 60);
+    const { filter, lastLabel } = buildFilterComplex(segments, transition, vw, vh);
+
+    const totalEditDuration = segments.reduce((s, seg) => s + seg.duration, 0);
+
+    const args = [
+      '-i', 'input.mp4',
+      '-i', 'music.mp3',
+      '-filter_complex', filter,
+      '-map', `[${lastLabel}]`,
+      '-map', '1:a',
+      '-t', totalEditDuration.toFixed(2),
+      '-c:v', 'libx264',
+      '-preset', 'fast',
+      '-crf', '23',
+      '-c:a', 'aac',
+      '-b:a', '192k',
+      '-shortest',
+      '-movflags', '+faststart',
+      '-y',
+      'output.mp4'
+    ];
+
+    console.log('[ffmpeg] args:', args.join(' '));
+    await ffmpeg.exec(args);
+
+    // Step 8: Read result
+    setStatus('Reading output…', 90);
+    const data = await ffmpeg.readFile('output.mp4');
+    resultBlob = new Blob([data.buffer], { type: 'video/mp4' });
+
+    // Show preview
+    setStatus('Done! ✓', 100);
+    const url = URL.createObjectURL(resultBlob);
+    previewVideo.src = url;
+    previewSection.classList.add('active');
+
+    // Cleanup FFmpeg FS
+    try { await ffmpeg.deleteFile('input.mp4'); } catch {}
+    try { await ffmpeg.deleteFile('music.mp3'); } catch {}
+    try { await ffmpeg.deleteFile('output.mp4'); } catch {}
+
+  } catch (err) {
+    console.error(err);
+    statusText.textContent = 'Error: ' + err.message;
+    statusText.classList.add('error');
+    progressBar.style.width = '0%';
+  }
+}
+
+function setStatus(msg, pct) {
+  statusText.textContent = msg;
+  if (pct != null) progressBar.style.width = pct + '%';
+}
+
+async function getVideoDimensions(file) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const vid = document.createElement('video');
+    vid.preload = 'metadata';
+    vid.onloadedmetadata = () => {
+      resolve({ width: vid.videoWidth, height: vid.videoHeight });
+      URL.revokeObjectURL(url);
+    };
+    vid.onerror = () => { URL.revokeObjectURL(url); resolve({ width: 1280, height: 720 }); };
+    vid.src = url;
+  });
+}
+
+/* ── Download ────────────────────────────────────────────────── */
+btnDownload.addEventListener('click', () => {
+  if (!resultBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(resultBlob);
+  a.download = 'jarvis-edit-' + Date.now() + '.mp4';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+});
+
+/* ── Create button ───────────────────────────────────────────── */
+btnCreate.addEventListener('click', async () => {
+  btnCreate.disabled = true;
+  try {
+    await createEdit();
+  } finally {
+    btnCreate.disabled = !(videoFile && musicFile);
+  }
+});
+</script>
+</body>
+</html>

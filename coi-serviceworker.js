@@ -1,27 +1,118 @@
-# Jarvis Video Edit Portal
+/*! coi-serviceworker v0.1.7 - Guido Zuidhof and contributors, licensed under MIT */
+let coepCredentialless = false;
+if (typeof window === 'undefined') {
+    self.addEventListener("install", () => self.skipWaiting());
+    self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 
-Beat-synced automatic video editor that runs **100% in your browser** — no server, no uploads, no installs.
+    self.addEventListener("message", (ev) => {
+        if (!ev.data) {
+            return;
+        } else if (ev.data.type === "deregister") {
+            self.registration
+                .unregister()
+                .then(() => {
+                    return self.clients.matchAll();
+                })
+                .then(clients => {
+                    clients.forEach((client) => client.navigate(client.url));
+                });
+        } else if (ev.data.type === "coepCredentialless") {
+            coepCredentialless = ev.data.value;
+        }
+    });
 
-## Features
-- **Auto Edit** — drop any video + music → instant beat-synced reel
-- Detects bass/kick, snare, hi-hat, and energy peaks
-- Scores every scene for motion and color energy — picks the coolest parts
-- Transition styles: Auto zoom-punch, Hard cuts, Soft fade, Center Grow
-- Flash on strong beats, color grading, vignette
-- **Style Match** — copy pacing and cuts from a reference video onto your own footage
-- Download result as MP4
+    self.addEventListener("fetch", function (event) {
+        const r = event.request;
+        if (r.cache === "only-if-cached" && r.mode !== "same-origin") {
+            return;
+        }
 
-## How to use
-Open the GitHub Pages URL and:
-1. Choose your source video
-2. Choose a music file (MP3/WAV/M4A)
-3. Pick transition style and output length
-4. Press **⚡ Create Edit** — processing runs in your browser via WebAssembly FFmpeg
+        const request = (coepCredentialless && r.mode === "no-cors")
+            ? new Request(r, {
+                credentials: "omit",
+            })
+            : r;
+        event.respondWith(
+            fetch(request)
+                .then((response) => {
+                    if (response.status === 0) {
+                        return response;
+                    }
 
-First run downloads ~30 MB of FFmpeg WASM (cached by your browser after that).
+                    const newHeaders = new Headers(response.headers);
+                    newHeaders.set("Cross-Origin-Embedder-Policy",
+                        coepCredentialless ? "credentialless" : "require-corp"
+                    );
+                    if (!coepCredentialless) {
+                        newHeaders.set("Cross-Origin-Resource-Policy", "cross-origin");
+                    }
+                    newHeaders.set("Cross-Origin-Opener-Policy", "same-origin");
 
-## Host on GitHub Pages
-1. Create a new GitHub repo (e.g. `video-edit-portal`)
-2. Push the contents of this folder to the `main` branch
-3. Go to repo **Settings → Pages → Source → Deploy from branch → main / root**
-4. Your portal will be live at `https://YOUR_USERNAME.github.io/video-edit-portal/`
+                    return new Response(response.body, {
+                        status: response.status,
+                        statusText: response.statusText,
+                        headers: newHeaders,
+                    });
+                })
+                .catch((e) => console.error(e))
+        );
+    });
+
+} else {
+    (() => {
+        // You can customize the behavior of this script through a global `coi` variable.
+        const coi = {
+            shouldRegister: () => true,
+            shouldDeregister: () => false,
+            coepCredentialless: () => !(window.chrome || window.netscape),
+            doReload: () => window.location.reload(),
+            quiet: false,
+            ...window.coi
+        };
+
+        const n = navigator;
+
+        if (n.serviceWorker && n.serviceWorker.controller) {
+            n.serviceWorker.controller.postMessage({
+                type: "coepCredentialless",
+                value: coi.coepCredentialless(),
+            });
+
+            if (coi.shouldDeregister()) {
+                n.serviceWorker.controller.postMessage({ type: "deregister" });
+            }
+        }
+
+        // If we're already coi: do nothing. Perhaps it's due to this script doing its job, or COOP/COEP are
+        // already set from the origin server. Also if the browser has no notion of crossOriginIsolated, just give up here.
+        if (window.crossOriginIsolated !== false || !coi.shouldRegister()) return;
+
+        if (!window.isSecureContext) {
+            !coi.quiet && console.log("COOP/COEP Service Worker not registered, a secure context is required.");
+            return;
+        }
+
+        // In some environments (e.g. Chrome incognito mode) this won't be available
+        if (n.serviceWorker) {
+            n.serviceWorker.register(window.document.currentScript.src).then(
+                (registration) => {
+                    !coi.quiet && console.log("COOP/COEP Service Worker registered", registration.scope);
+
+                    registration.addEventListener("updatefound", () => {
+                        !coi.quiet && console.log("Reloading page to make use of updated COOP/COEP Service Worker.");
+                        coi.doReload();
+                    });
+
+                    // If the registration is active, but it's not controlling the page
+                    if (registration.active && !n.serviceWorker.controller) {
+                        !coi.quiet && console.log("Reloading page to make use of COOP/COEP Service Worker.");
+                        coi.doReload();
+                    }
+                },
+                (err) => {
+                    !coi.quiet && console.error("COOP/COEP Service Worker failed to register:", err);
+                }
+            );
+        }
+    })();
+}
