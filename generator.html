@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎬 Documentary Generator — Active Media</title>
+<script src="coi-serviceworker.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0f;--surface:#141420;--surface2:#1a1a2e;--accent:#e94560;
+  --accent2:#0f3460;--text:#e8e8f0;--text-dim:#777;--radius:12px;
+  --green:#00e676;--yellow:#ffd600;--blue:#448aff;
+}
+body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+
+/* Header */
+.header{background:linear-gradient(135deg,#0d1117,var(--surface));padding:1rem 2rem;display:flex;align-items:center;gap:1rem;border-bottom:2px solid var(--accent);position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+.header h1{font-size:1.4rem;font-weight:700;background:linear-gradient(90deg,var(--accent),var(--yellow));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header nav{margin-left:auto;display:flex;gap:1.2rem;font-size:.85rem}
+.header nav a{color:var(--text-dim);transition:color .2s}
+.header nav a:hover{color:var(--text);text-decoration:none}
+
+/* Main */
+.main{max-width:900px;margin:0 auto;padding:1.5rem 1rem 4rem}
+.card{background:var(--surface);border:1px solid #ffffff0a;border-radius:var(--radius);padding:1.5rem;margin-bottom:1.2rem;transition:border-color .3s}
+.card.highlight{border-color:var(--accent)}
+.card h2{font-size:1.05rem;margin-bottom:1rem;display:flex;align-items:center;gap:.5rem;color:var(--text)}
+.card h2 .icon{font-size:1.2rem}
+
+/* Form elements */
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem}
+@media(max-width:600px){.form-row{grid-template-columns:1fr}}
+.field{display:flex;flex-direction:column;gap:.35rem}
+.field label{font-size:.8rem;font-weight:500;color:var(--text-dim)}
+.field input,.field select,.field textarea{width:100%;padding:.6rem .8rem;background:var(--bg);color:var(--text);border:1px solid #ffffff15;border-radius:8px;font-size:.9rem;font-family:inherit;transition:border-color .2s}
+.field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent)}
+.field textarea{resize:vertical;min-height:60px}
+.field .hint{font-size:.7rem;color:var(--text-dim)}
+.field input[type=password]{letter-spacing:1px}
+.keys-saved{font-size:.75rem;color:var(--green);margin-top:.3rem}
+
+/* Subject input */
+.subject-input{display:flex;gap:.8rem;align-items:flex-end}
+.subject-input .field{flex:1}
+.subject-input input{font-size:1.1rem;padding:.75rem 1rem}
+
+/* Buttons */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;padding:.75rem 1.5rem;font-size:1rem;font-weight:600;border:none;border-radius:8px;cursor:pointer;transition:all .2s;font-family:inherit}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important}
+.btn-primary{background:linear-gradient(135deg,var(--accent),#c0392b);color:#fff;font-size:1.1rem;padding:.9rem 2rem;width:100%;text-transform:uppercase;letter-spacing:1px}
+.btn-primary:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 25px #e9456050}
+.btn-secondary{background:var(--surface2);color:var(--text);border:1px solid #ffffff15}
+.btn-secondary:hover:not(:disabled){background:#222240}
+.btn-green{background:var(--green);color:#000}
+.btn-green:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 4px 15px #00e67640}
+.btn-small{padding:.5rem 1rem;font-size:.85rem}
+
+/* Pipeline progress */
+.pipeline{display:none}
+.pipeline.active{display:block}
+.steps{list-style:none;padding:0}
+.steps li{padding:.7rem 0;display:flex;align-items:center;gap:.8rem;border-bottom:1px solid #ffffff08;font-size:.9rem}
+.steps li:last-child{border-bottom:none}
+.step-icon{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.75rem;flex-shrink:0;background:#222;color:var(--text-dim);transition:all .3s}
+.step-icon.active{background:var(--accent);color:#fff;animation:pulse 1.5s infinite}
+.step-icon.done{background:var(--green);color:#000}
+.step-icon.error{background:#ff5252;color:#fff}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 #e9456040}50%{box-shadow:0 0 0 8px #e9456000}}
+.step-detail{font-size:.75rem;color:var(--text-dim);margin-left:2.3rem;margin-top:-.3rem;padding-bottom:.3rem}
+.progress-bar-outer{width:100%;height:6px;background:#1a1a2e;border-radius:3px;margin:1rem 0 .5rem;overflow:hidden}
+.progress-bar-inner{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--yellow));border-radius:3px;transition:width .4s}
+.time-est{font-size:.75rem;color:var(--text-dim);text-align:right}
+
+/* Script preview */
+.script-preview{display:none;max-height:400px;overflow-y:auto;padding:.5rem 0}
+.script-preview.active{display:block}
+.script-section{background:var(--bg);border-radius:8px;padding:1rem;margin-bottom:.8rem;border-left:3px solid var(--accent2)}
+.script-section h3{font-size:.9rem;color:var(--accent);margin-bottom:.4rem}
+.script-section p{font-size:.82rem;line-height:1.6;color:var(--text-dim)}
+.script-section .search-terms{font-size:.7rem;color:var(--blue);margin-top:.3rem}
+
+/* Video preview */
+.preview{display:none;flex-direction:column;align-items:center;gap:1rem}
+.preview.active{display:flex}
+.preview video{width:100%;max-width:800px;border-radius:var(--radius);background:#000}
+.preview .actions{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center}
+
+/* Loading overlay */
+.loading-overlay{display:none;position:fixed;inset:0;background:#000d;z-index:200;align-items:center;justify-content:center;flex-direction:column;gap:1rem}
+.loading-overlay.active{display:flex}
+.spinner{width:48px;height:48px;border:4px solid #222;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Cancel */
+.cancel-bar{display:none;text-align:center;margin-top:.5rem}
+.cancel-bar.active{display:block}
+
+/* Upload zone */
+.upload-zone{border:2px dashed #ffffff20;border-radius:var(--radius);padding:2rem;text-align:center;cursor:pointer;transition:all .2s;background:var(--bg)}
+.upload-zone:hover,.upload-zone.dragover{border-color:var(--accent);background:#e9456010}
+.upload-zone .upload-prompt p{margin:.3rem 0;font-size:.9rem;color:var(--text-dim)}
+.clip-list{list-style:none;padding:0;margin-top:.8rem}
+.clip-list li{display:flex;align-items:center;gap:.6rem;padding:.5rem .7rem;background:var(--bg);border-radius:8px;margin-bottom:.4rem;font-size:.82rem;border:1px solid #ffffff08}
+.clip-list li .clip-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.clip-list li .clip-size{color:var(--text-dim);font-size:.75rem;flex-shrink:0}
+.clip-list li .clip-remove{background:none;border:none;color:#ff5252;cursor:pointer;font-size:1rem;padding:0 .3rem;line-height:1}
+.clip-list li .clip-remove:hover{color:#ff8a80}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+
+/* Responsive */
+@media(max-width:600px){
+  .header{padding:.7rem 1rem;flex-wrap:wrap}
+  .header h1{font-size:1.1rem}
+  .main{padding:1rem .6rem}
+  .card{padding:1rem}
+}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <h1>🎬 Documentary Generator</h1>
+  <nav>
+    <a href="index.html">⚡ Video Editor</a>
+    <a href="generator.html" style="color:var(--accent)">🎬 Doc Generator</a>
+  </nav>
+</header>
+
+<main class="main">
+
+  <!-- API Keys -->
+  <section class="card" id="keysCard">
+    <h2><span class="icon">🔑</span> API Keys</h2>
+    <p style="font-size:.8rem;color:var(--text-dim);margin-bottom:1rem">
+      Keys are stored locally in your browser — never sent anywhere except directly to Groq / OpenAI.
+    </p>
+    <div class="form-row">
+      <div class="field">
+        <label for="groqKey">Groq API Key</label>
+        <input type="password" id="groqKey" placeholder="gsk_…" autocomplete="off">
+        <span class="hint">For script writing (LLM) · Free at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com</a></span>
+      </div>
+      <div class="field">
+        <label for="openaiKey">OpenAI API Key</label>
+        <input type="password" id="openaiKey" placeholder="sk-…" autocomplete="off">
+        <span class="hint">For narration (TTS) · <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a></span>
+      </div>
+    </div>
+    <button class="btn btn-secondary btn-small" id="btnSaveKeys">💾 Save Keys</button>
+    <span class="keys-saved" id="keysSaved" style="display:none">✓ Saved</span>
+  </section>
+
+  <!-- Video Clips Upload -->
+  <section class="card" id="uploadCard">
+    <h2><span class="icon">🎥</span> Your Video Clips</h2>
+    <p style="font-size:.8rem;color:var(--text-dim);margin-bottom:1rem">
+      Upload your own footage — YouTube downloads, screen recordings, anything. The tool will auto-clip them to fit each section.
+    </p>
+    <div class="upload-zone" id="uploadZone">
+      <div class="upload-prompt">
+        <span style="font-size:2rem">📁</span>
+        <p>Drag &amp; drop video files here</p>
+        <p style="font-size:.75rem;color:var(--text-dim)">or click to browse · MP4, MOV, WEBM</p>
+      </div>
+      <input type="file" id="fileInput" multiple accept="video/*" style="display:none">
+    </div>
+    <ul class="clip-list" id="clipList"></ul>
+    <p class="hint" style="margin-top:.5rem">💡 No clips? No problem — sections without footage get a stylish animated background.</p>
+  </section>
+
+  <!-- Subject Input -->
+  <section class="card" id="inputCard">
+    <h2><span class="icon">🎯</span> What's your documentary about?</h2>
+    <div class="subject-input">
+      <div class="field">
+        <input type="text" id="subjectInput" placeholder="e.g. The Deep Ocean, History of AI, Life on Mars…" maxlength="200">
+      </div>
+    </div>
+    <div class="form-row" style="margin-top:1rem">
+      <div class="field">
+        <label for="selVoice">Narrator Voice</label>
+        <select id="selVoice">
+          <option value="onyx">Onyx — Deep &amp; authoritative</option>
+          <option value="nova">Nova — Warm &amp; friendly</option>
+          <option value="alloy">Alloy — Neutral &amp; clear</option>
+          <option value="echo">Echo — Smooth &amp; resonant</option>
+          <option value="fable">Fable — Expressive &amp; British</option>
+          <option value="shimmer">Shimmer — Soft &amp; gentle</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="selSections">Number of Sections</label>
+        <select id="selSections">
+          <option value="10">10 sections (~8 min)</option>
+          <option value="12" selected>12 sections (~10 min)</option>
+          <option value="15">15 sections (~12 min)</option>
+          <option value="18">18 sections (~15 min)</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- Generate Button -->
+  <section class="card" style="text-align:center">
+    <button class="btn btn-primary" id="btnGenerate" disabled>🎬 Generate Documentary</button>
+  </section>
+
+  <!-- Pipeline Progress -->
+  <section class="card pipeline" id="pipelineCard">
+    <h2><span class="icon">⚙️</span> Pipeline</h2>
+    <div class="progress-bar-outer"><div class="progress-bar-inner" id="mainProgress"></div></div>
+    <div class="time-est" id="timeEst"></div>
+    <ul class="steps" id="stepsList">
+      <li id="step-script"><span class="step-icon" id="icon-script">1</span> Generating documentary script…</li>
+      <li class="step-detail" id="detail-script"></li>
+      <li id="step-narration"><span class="step-icon" id="icon-narration">2</span> Creating narration audio…</li>
+      <li class="step-detail" id="detail-narration"></li>
+      <li id="step-video"><span class="step-icon" id="icon-video">3</span> Assigning video clips…</li>
+      <li class="step-detail" id="detail-video"></li>
+      <li id="step-compose"><span class="step-icon" id="icon-compose">4</span> Composing final video…</li>
+      <li class="step-detail" id="detail-compose"></li>
+      <li id="step-export"><span class="step-icon" id="icon-export">5</span> Exporting…</li>
+      <li class="step-detail" id="detail-export"></li>
+    </ul>
+    <div class="cancel-bar" id="cancelBar">
+      <button class="btn btn-secondary btn-small" id="btnCancel">✕ Cancel</button>
+    </div>
+  </section>
+
+  <!-- Script Preview -->
+  <section class="card" id="scriptCard" style="display:none">
+    <h2><span class="icon">📜</span> Generated Script</h2>
+    <div class="script-preview active" id="scriptPreview"></div>
+  </section>
+
+  <!-- Video Preview -->
+  <section class="card" id="previewCard">
+    <div class="preview" id="previewArea">
+      <h2><span class="icon">🎥</span> Your Documentary</h2>
+      <video id="previewVideo" controls></video>
+      <div class="actions">
+        <button class="btn btn-green" id="btnDownload">⬇️ Download MP4</button>
+        <button class="btn btn-secondary" id="btnNewDoc">🔄 Make Another</button>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <div style="color:#aaa;font-size:.85rem" id="loadingText">Loading FFmpeg WASM…</div>
+</div>
+
+<!-- FFmpeg WASM -->
+<script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.15/dist/umd/ffmpeg.js"></script>
+<script src="https://unpkg.com/@ffmpeg/util@0.12.1/dist/umd/util.js"></script>
+
+<script>
+"use strict";
+
+/* ================================================================
+   CONFIG
+   ================================================================ */
+const CFG = {
+  WIDTH: 1280,
+  HEIGHT: 720,
+  FPS: 24,
+  CRF: '26',
+  PRESET: 'ultrafast',
+  TITLE_DURATION: 6,
+  FADE_DURATION: 0.5,
+  GROQ_MODEL: 'llama-3.3-70b-versatile',
+  TTS_MODEL: 'tts-1',
+};
+
+/* ================================================================
+   STATE
+   ================================================================ */
+let cancelled = false;
+let ffmpeg = null;
+let ffmpegReady = false;
+let resultBlob = null;
+let generatedScript = null;
+let uploadedFiles = [];  // Array of File objects
+
+/* ================================================================
+   DOM REFS
+   ================================================================ */
+const $ = id => document.getElementById(id);
+const groqKeyInput    = $('groqKey');
+const openaiKeyInput  = $('openaiKey');
+const btnSaveKeys     = $('btnSaveKeys');
+const keysSaved       = $('keysSaved');
+const uploadZone      = $('uploadZone');
+const fileInput       = $('fileInput');
+const clipList        = $('clipList');
+const subjectInput    = $('subjectInput');
+const selVoice        = $('selVoice');
+const selSections     = $('selSections');
+const btnGenerate     = $('btnGenerate');
+const pipelineCard    = $('pipelineCard');
+const mainProgress    = $('mainProgress');
+const timeEst         = $('timeEst');
+const cancelBar       = $('cancelBar');
+const btnCancel       = $('btnCancel');
+const scriptCard      = $('scriptCard');
+const scriptPreview   = $('scriptPreview');
+const previewArea     = $('previewArea');
+const previewVideo    = $('previewVideo');
+const btnDownload     = $('btnDownload');
+const btnNewDoc       = $('btnNewDoc');
+const loadingOverlay  = $('loadingOverlay');
+const loadingText     = $('loadingText');
+
+/* ================================================================
+   API KEY MANAGEMENT
+   ================================================================ */
+function loadKeys() {
+  const gk = localStorage.getItem('am_groq_key') || '';
+  const ok = localStorage.getItem('am_openai_key') || '';
+  if (gk) groqKeyInput.value = gk;
+  if (ok) openaiKeyInput.value = ok;
+  updateGenerateBtn();
+}
+
+function saveKeys() {
+  localStorage.setItem('am_groq_key', groqKeyInput.value.trim());
+  localStorage.setItem('am_openai_key', openaiKeyInput.value.trim());
+  keysSaved.style.display = 'inline';
+  setTimeout(() => keysSaved.style.display = 'none', 2000);
+  updateGenerateBtn();
+}
+
+function getGroqKey() { return (groqKeyInput.value || localStorage.getItem('am_groq_key') || '').trim(); }
+function getOpenAIKey() { return (openaiKeyInput.value || localStorage.getItem('am_openai_key') || '').trim(); }
+
+btnSaveKeys.addEventListener('click', saveKeys);
+groqKeyInput.addEventListener('input', updateGenerateBtn);
+openaiKeyInput.addEventListener('input', updateGenerateBtn);
+subjectInput.addEventListener('input', updateGenerateBtn);
+
+function updateGenerateBtn() {
+  btnGenerate.disabled = !(getGroqKey() && getOpenAIKey() && subjectInput.value.trim());
+}
+
+/* ================================================================
+   FILE UPLOAD HANDLING
+   ================================================================ */
+function addFiles(files) {
+  for (const f of files) {
+    if (!f.type.startsWith('video/')) continue;
+    // Avoid duplicates by name+size
+    if (uploadedFiles.some(u => u.name === f.name && u.size === f.size)) continue;
+    uploadedFiles.push(f);
+  }
+  renderClipList();
+}
+
+function removeFile(index) {
+  uploadedFiles.splice(index, 1);
+  renderClipList();
+}
+
+function renderClipList() {
+  if (uploadedFiles.length === 0) {
+    clipList.innerHTML = '';
+    return;
+  }
+  clipList.innerHTML = uploadedFiles.map((f, i) =>
+    `<li>
+      <span class="clip-name">🎬 ${escapeHtml(f.name)}</span>
+      <span class="clip-size">${formatFileSize(f.size)}</span>
+      <button class="clip-remove" data-idx="${i}" title="Remove">✕</button>
+    </li>`
+  ).join('');
+  clipList.querySelectorAll('.clip-remove').forEach(btn => {
+    btn.addEventListener('click', () => removeFile(parseInt(btn.dataset.idx)));
+  });
+}
+
+// Drag & drop
+uploadZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  addFiles(e.dataTransfer.files);
+});
+
+/* ================================================================
+   PIPELINE UI HELPERS
+   ================================================================ */
+function setStep(stepName, state, detail) {
+  const icon = $('icon-' + stepName);
+  if (!icon) return;
+  icon.className = 'step-icon ' + state;           // '', 'active', 'done', 'error'
+  if (state === 'done')  icon.textContent = '✓';
+  if (state === 'error') icon.textContent = '✕';
+  if (detail !== undefined) $('detail-' + stepName).textContent = detail;
+}
+
+function setProgress(pct) {
+  mainProgress.style.width = Math.min(100, Math.max(0, pct)).toFixed(1) + '%';
+}
+
+function showPipeline() {
+  pipelineCard.classList.add('active');
+  cancelBar.classList.add('active');
+  const stepNumbers = { script: '1', narration: '2', video: '3', compose: '4', export: '5' };
+  Object.entries(stepNumbers).forEach(([s, num]) => {
+    setStep(s, '', '');
+    const icon = $('icon-' + s);
+    if (icon) icon.textContent = num;
+  });
+  setProgress(0);
+  timeEst.textContent = '';
+}
+
+function hidePipeline() {
+  cancelBar.classList.remove('active');
+}
+
+function showError(stepName, msg) {
+  setStep(stepName, 'error', msg);
+}
+
+/* ================================================================
+   GROQ — SCRIPT GENERATION
+   ================================================================ */
+async function generateScript(subject, numSections) {
+  const key = getGroqKey();
+  const systemPrompt = `You are an award-winning documentary scriptwriter for YouTube. Write a compelling, educational, and deeply engaging documentary script.
+
+Output ONLY valid JSON (no markdown fences) with this structure:
+{
+  "title": "Documentary Title",
+  "sections": [
+    {
+      "heading": "Section Title",
+      "narration": "Full narration text for this section",
+      "visualDescription": "Brief description of ideal visuals for this section"
+    }
+  ]
+}
+
+Rules:
+- Create exactly ${numSections} sections including an introduction and a conclusion.
+- Each section's narration must be 120-180 words (approximately 45-70 seconds when spoken).
+- Use a compelling narrative arc: hook the viewer, provide context, deep-dive into fascinating details, build to insights, end with a memorable conclusion.
+- Include specific facts, dates, statistics, vivid descriptions, and storytelling techniques.
+- Write in an authoritative yet warm and accessible voice — think David Attenborough meets a great YouTube explainer.
+- visualDescription should briefly describe what kind of footage would work best (e.g. "aerial shots of coral reefs", "time-lapse of a city at night").
+- Make the introduction especially captivating to hook the viewer in the first 30 seconds.`;
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+    body: JSON.stringify({
+      model: CFG.GROQ_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Create a documentary script about: ${subject}` }
+      ],
+      temperature: 0.8,
+      max_tokens: 6000
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(`Groq error ${response.status}: ${err.error?.message || response.statusText}`);
+  }
+
+  const data = await response.json();
+  let content = data.choices[0].message.content.trim();
+
+  // Strip markdown code fences if present
+  content = content.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
+
+  const script = JSON.parse(content);
+  if (!script.title || !Array.isArray(script.sections) || script.sections.length === 0) {
+    throw new Error('Invalid script format received from Groq');
+  }
+  return script;
+}
+
+/* ================================================================
+   OPENAI — TEXT-TO-SPEECH
+   ================================================================ */
+async function generateTTS(text, voice) {
+  const key = getOpenAIKey();
+  const response = await fetch('https://api.openai.com/v1/audio/speech', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+    body: JSON.stringify({
+      model: CFG.TTS_MODEL,
+      input: text,
+      voice: voice,
+      response_format: 'mp3'
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(`TTS error ${response.status}: ${err.error?.message || response.statusText}`);
+  }
+
+  return await response.blob();
+}
+
+/* ================================================================
+   AUDIO DURATION HELPER
+   ================================================================ */
+async function getAudioDuration(blob) {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  try {
+    const buf = await blob.arrayBuffer();
+    const decoded = await ctx.decodeAudioData(buf);
+    return decoded.duration;
+  } finally {
+    ctx.close();
+  }
+}
+
+/* ================================================================
+   CLIP ASSIGNMENT — DISTRIBUTE UPLOADED FILES ACROSS SECTIONS
+   ================================================================ */
+function assignClipsToSections(numSections) {
+  /* Distribute uploaded files round-robin across sections.
+     Returns an array of length numSections, each element is a File or null. */
+  const assignments = new Array(numSections).fill(null);
+  if (uploadedFiles.length === 0) return assignments;
+  for (let i = 0; i < numSections; i++) {
+    assignments[i] = uploadedFiles[i % uploadedFiles.length];
+  }
+  return assignments;
+}
+
+async function readFileAsUint8(file) {
+  return new Uint8Array(await file.arrayBuffer());
+}
+
+/* ================================================================
+   CANVAS — TITLE CARD & FALLBACK VISUALS
+   ================================================================ */
+function createTitleCardImage(title) {
+  const canvas = document.createElement('canvas');
+  canvas.width = CFG.WIDTH;
+  canvas.height = CFG.HEIGHT;
+  const ctx = canvas.getContext('2d');
+
+  // Background gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, CFG.HEIGHT);
+  grad.addColorStop(0, '#0a0a1a');
+  grad.addColorStop(1, '#1a0a0a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, CFG.WIDTH, CFG.HEIGHT);
+
+  // Decorative line
+  ctx.strokeStyle = '#e94560';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(CFG.WIDTH * 0.3, CFG.HEIGHT * 0.42);
+  ctx.lineTo(CFG.WIDTH * 0.7, CFG.HEIGHT * 0.42);
+  ctx.stroke();
+
+  // Title text
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Auto-size font to fit
+  let fontSize = 62;
+  ctx.font = `bold ${fontSize}px 'Segoe UI', system-ui, sans-serif`;
+  while (ctx.measureText(title).width > CFG.WIDTH * 0.8 && fontSize > 24) {
+    fontSize -= 2;
+    ctx.font = `bold ${fontSize}px 'Segoe UI', system-ui, sans-serif`;
+  }
+
+  // Word wrap if still too wide
+  const words = title.split(' ');
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width > CFG.WIDTH * 0.8) {
+      if (line) lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+
+  const lineHeight = fontSize * 1.3;
+  const startY = CFG.HEIGHT * 0.5 - ((lines.length - 1) * lineHeight) / 2;
+  for (let i = 0; i < lines.length; i++) {
+    ctx.fillText(lines[i], CFG.WIDTH / 2, startY + i * lineHeight);
+  }
+
+  // Subtitle
+  ctx.font = `300 ${Math.max(18, fontSize * 0.35)}px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillStyle = '#e94560';
+  ctx.fillText('A  D O C U M E N T A R Y', CFG.WIDTH / 2, startY + lines.length * lineHeight + 30);
+
+  // Bottom decorative line
+  ctx.strokeStyle = '#e9456040';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(CFG.WIDTH * 0.35, CFG.HEIGHT * 0.82);
+  ctx.lineTo(CFG.WIDTH * 0.65, CFG.HEIGHT * 0.82);
+  ctx.stroke();
+
+  return canvas;
+}
+
+function createFallbackImage(heading) {
+  const canvas = document.createElement('canvas');
+  canvas.width = CFG.WIDTH;
+  canvas.height = CFG.HEIGHT;
+  const ctx = canvas.getContext('2d');
+
+  const colors = ['#0d1b2a','#1b263b','#161625','#0a1628','#1a0a1a','#0a1a1a'];
+  // Deterministic color based on heading content
+  let hash = 0;
+  for (let i = 0; i < heading.length; i++) hash = ((hash << 5) - hash + heading.charCodeAt(i)) | 0;
+  const color = colors[Math.abs(hash) % colors.length];
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, CFG.WIDTH, CFG.HEIGHT);
+
+  // Subtle grid pattern
+  ctx.strokeStyle = '#ffffff08';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < CFG.WIDTH; x += 60) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CFG.HEIGHT); ctx.stroke();
+  }
+  for (let y = 0; y < CFG.HEIGHT; y += 60) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CFG.WIDTH, y); ctx.stroke();
+  }
+
+  // Section heading
+  ctx.fillStyle = '#ffffff40';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `300 32px 'Segoe UI', system-ui, sans-serif`;
+  ctx.fillText(heading, CFG.WIDTH / 2, CFG.HEIGHT / 2);
+
+  return canvas;
+}
+
+async function canvasToUint8(canvas) {
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+/* ================================================================
+   FFMPEG
+   ================================================================ */
+async function initFFmpeg() {
+  if (ffmpegReady) return;
+  loadingOverlay.classList.add('active');
+  loadingText.textContent = 'Loading FFmpeg WASM (~31 MB first time)…';
+  try {
+    const { FFmpeg } = FFmpegWASM;
+    ffmpeg = new FFmpeg();
+    ffmpeg.on('log', ({ message }) => console.log('[ffmpeg]', message));
+    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+    await ffmpeg.load({
+      coreURL: `${baseURL}/ffmpeg-core.js`,
+      wasmURL: `${baseURL}/ffmpeg-core.wasm`,
+    });
+    ffmpegReady = true;
+    loadingText.textContent = 'FFmpeg ready ✓';
+  } catch (err) {
+    loadingText.textContent = 'Failed to load FFmpeg: ' + err.message;
+    throw err;
+  } finally {
+    setTimeout(() => loadingOverlay.classList.remove('active'), 500);
+  }
+}
+
+async function ffmpegCleanup(files) {
+  for (const f of files) {
+    try { await ffmpeg.deleteFile(f); } catch { /* ignore */ }
+  }
+}
+
+/* ================================================================
+   MAIN PIPELINE
+   ================================================================ */
+async function runPipeline() {
+  cancelled = false;
+  resultBlob = null;
+  generatedScript = null;
+
+  const subject = subjectInput.value.trim();
+  const voice = selVoice.value;
+  const numSections = parseInt(selSections.value);
+
+  if (!subject) return;
+
+  // Save keys
+  saveKeys();
+
+  // Reset UI
+  showPipeline();
+  scriptCard.style.display = 'none';
+  previewArea.classList.remove('active');
+  btnGenerate.disabled = true;
+
+  const pipelineStart = Date.now();
+  const processedFiles = [];
+
+  try {
+    /* ── Step 1: Generate Script ─────────────────────────── */
+    setStep('script', 'active', 'Calling Groq LLM…');
+    setProgress(2);
+
+    const script = await generateScript(subject, numSections);
+    if (cancelled) throw new Error('Cancelled');
+    generatedScript = script;
+
+    setStep('script', 'done', `"${script.title}" — ${script.sections.length} sections`);
+    setProgress(10);
+
+    // Show script preview
+    renderScriptPreview(script);
+
+    /* ── Step 2: Generate Narration ──────────────────────── */
+    setStep('narration', 'active', 'Generating speech with OpenAI TTS…');
+
+    const narrations = [];  // { blob, duration }
+    for (let i = 0; i < script.sections.length; i++) {
+      if (cancelled) throw new Error('Cancelled');
+      setStep('narration', 'active', `Section ${i + 1}/${script.sections.length}: "${script.sections[i].heading}"`);
+
+      const audioBlob = await generateTTS(script.sections[i].narration, voice);
+      const duration = await getAudioDuration(audioBlob);
+      narrations.push({ blob: audioBlob, duration });
+
+      setProgress(10 + (i + 1) / script.sections.length * 20);
+    }
+
+    setStep('narration', 'done', `${narrations.length} audio clips generated`);
+    setProgress(30);
+
+    /* ── Step 3: Assign Video Clips ─────────────────────── */
+    setStep('video', 'active', 'Assigning uploaded clips to sections…');
+
+    const clipAssignments = assignClipsToSections(script.sections.length);
+    const videoClips = [];  // { data: Uint8Array | null, fallback: boolean }
+    for (let i = 0; i < script.sections.length; i++) {
+      if (cancelled) throw new Error('Cancelled');
+      const file = clipAssignments[i];
+      if (file) {
+        setStep('video', 'active', `Section ${i + 1}/${script.sections.length}: reading "${file.name}"`);
+        try {
+          const data = await readFileAsUint8(file);
+          videoClips.push({ data, fallback: false });
+        } catch (err) {
+          console.warn(`Failed to read file "${file.name}":`, err.message);
+          videoClips.push({ data: null, fallback: true });
+        }
+      } else {
+        videoClips.push({ data: null, fallback: true });
+      }
+      setProgress(30 + (i + 1) / script.sections.length * 15);
+    }
+
+    const foundCount = videoClips.filter(c => !c.fallback).length;
+    setStep('video', 'done', `${foundCount}/${videoClips.length} sections with clips, ${videoClips.length - foundCount} fallback`);
+    setProgress(45);
+
+    /* ── Step 4: Compose Video ───────────────────────────── */
+    setStep('compose', 'active', 'Initializing FFmpeg…');
+    await initFFmpeg();
+    if (cancelled) throw new Error('Cancelled');
+
+    // 4a. Create title card
+    setStep('compose', 'active', 'Creating title card…');
+    const titlePng = await canvasToUint8(createTitleCardImage(script.title));
+    await ffmpeg.writeFile('title.png', titlePng);
+
+    await ffmpeg.exec([
+      '-loop', '1', '-i', 'title.png',
+      '-t', String(CFG.TITLE_DURATION),
+      '-vf', `scale=${CFG.WIDTH}:${CFG.HEIGHT},format=yuv420p`,
+      '-r', String(CFG.FPS),
+      '-c:v', 'libx264', '-preset', CFG.PRESET, '-crf', CFG.CRF,
+      '-an', '-y', 'title.mp4'
+    ]);
+    await ffmpegCleanup(['title.png']);
+    processedFiles.push('title.mp4');
+    setProgress(48);
+
+    // 4b. Process each section
+    for (let i = 0; i < script.sections.length; i++) {
+      if (cancelled) throw new Error('Cancelled');
+      setStep('compose', 'active', `Encoding section ${i + 1}/${script.sections.length}…`);
+
+      const narr = narrations[i];
+      const clip = videoClips[i];
+      const audioDur = narr.duration;
+
+      // Write narration audio
+      const audioFileName = `audio_${i}.mp3`;
+      const audioBytes = new Uint8Array(await narr.blob.arrayBuffer());
+      await ffmpeg.writeFile(audioFileName, audioBytes);
+
+      // Write video source
+      const videoFileName = `clip_${i}.mp4`;
+      let usedFallback = false;
+
+      if (clip.data) {
+        await ffmpeg.writeFile(videoFileName, clip.data);
+      } else {
+        // Fallback: generate image and loop as video
+        usedFallback = true;
+        const fbPng = await canvasToUint8(createFallbackImage(script.sections[i].heading));
+        const fbPngName = `fb_${i}.png`;
+        await ffmpeg.writeFile(fbPngName, fbPng);
+        await ffmpeg.exec([
+          '-loop', '1', '-i', fbPngName,
+          '-t', String(Math.ceil(audioDur + 1)),
+          '-vf', `scale=${CFG.WIDTH}:${CFG.HEIGHT},format=yuv420p`,
+          '-r', String(CFG.FPS),
+          '-c:v', 'libx264', '-preset', CFG.PRESET, '-crf', CFG.CRF,
+          '-an', '-y', videoFileName
+        ]);
+        await ffmpegCleanup([fbPngName]);
+      }
+
+      // Compose section: trim/scale video + overlay narration audio
+      const outName = `section_${i}.mp4`;
+      const fadeSt = Math.max(0, audioDur - CFG.FADE_DURATION).toFixed(3);
+
+      const vFilter = [
+        `scale=${CFG.WIDTH}:${CFG.HEIGHT}:force_original_aspect_ratio=decrease`,
+        `pad=${CFG.WIDTH}:${CFG.HEIGHT}:(ow-iw)/2:(oh-ih)/2`,
+        'setsar=1',
+        `fps=${CFG.FPS}`,
+        'format=yuv420p',
+        `fade=t=in:d=${CFG.FADE_DURATION}`,
+        `fade=t=out:st=${fadeSt}:d=${CFG.FADE_DURATION}`
+      ].join(',');
+
+      const args = [
+        '-stream_loop', '-1', '-i', videoFileName,
+        '-i', audioFileName,
+        '-t', audioDur.toFixed(3),
+        '-vf', vFilter,
+        '-map', '0:v', '-map', '1:a',
+        '-c:v', 'libx264', '-preset', CFG.PRESET, '-crf', CFG.CRF,
+        '-c:a', 'aac', '-b:a', '128k',
+        '-shortest', '-y', outName
+      ];
+
+      try {
+        await ffmpeg.exec(args);
+      } catch (encodeErr) {
+        // Fallback: try without stream_loop
+        console.warn('stream_loop failed, retrying without:', encodeErr);
+        const argsNoLoop = [
+          '-i', videoFileName,
+          '-i', audioFileName,
+          '-t', audioDur.toFixed(3),
+          '-vf', vFilter,
+          '-map', '0:v', '-map', '1:a',
+          '-c:v', 'libx264', '-preset', CFG.PRESET, '-crf', CFG.CRF,
+          '-c:a', 'aac', '-b:a', '128k',
+          '-shortest', '-y', outName
+        ];
+        await ffmpeg.exec(argsNoLoop);
+      }
+
+      processedFiles.push(outName);
+
+      // Cleanup source files to free memory
+      await ffmpegCleanup([videoFileName, audioFileName]);
+
+      setProgress(48 + (i + 1) / script.sections.length * 40);
+
+      const elapsed = ((Date.now() - pipelineStart) / 1000).toFixed(0);
+      const perSection = (Date.now() - pipelineStart) / (i + 1);
+      const remaining = ((script.sections.length - i - 1) * perSection / 1000).toFixed(0);
+      timeEst.textContent = `Elapsed: ${formatTime(elapsed)}  ·  Est. remaining: ~${formatTime(remaining)}`;
+    }
+
+    setStep('compose', 'done', `${processedFiles.length} segments ready`);
+    setProgress(90);
+
+    /* ── Step 5: Concatenate & Export ────────────────────── */
+    setStep('export', 'active', 'Concatenating segments…');
+
+    // Create concat list
+    let concatList = '';
+    for (const f of processedFiles) {
+      concatList += `file '${f}'\n`;
+    }
+    const enc = new TextEncoder();
+    await ffmpeg.writeFile('concat.txt', enc.encode(concatList));
+
+    await ffmpeg.exec([
+      '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
+      '-c', 'copy', '-y', 'final.mp4'
+    ]);
+
+    setStep('export', 'active', 'Reading final video…');
+    setProgress(95);
+
+    const finalData = await ffmpeg.readFile('final.mp4');
+    resultBlob = new Blob([finalData.buffer], { type: 'video/mp4' });
+
+    // Cleanup
+    await ffmpegCleanup([...processedFiles, 'concat.txt', 'final.mp4']);
+
+    setStep('export', 'done', `${formatFileSize(resultBlob.size)} video ready`);
+    setProgress(100);
+    hidePipeline();
+
+    // Show preview
+    const blobUrl = URL.createObjectURL(resultBlob);
+    previewVideo.src = blobUrl;
+    previewArea.classList.add('active');
+
+    const totalTime = ((Date.now() - pipelineStart) / 1000).toFixed(0);
+    timeEst.textContent = `Completed in ${formatTime(totalTime)}`;
+
+  } catch (err) {
+    if (cancelled) {
+      timeEst.textContent = 'Cancelled by user';
+      // Cleanup any files
+      try { await ffmpegCleanup([...processedFiles, 'concat.txt', 'final.mp4', 'title.png']); } catch { /* ignore */ }
+    } else {
+      console.error('Pipeline error:', err);
+      // Find active step and mark as error
+      for (const s of ['script','narration','video','compose','export']) {
+        if ($('icon-' + s)?.classList.contains('active')) {
+          showError(s, err.message);
+          break;
+        }
+      }
+    }
+    hidePipeline();
+  } finally {
+    btnGenerate.disabled = false;
+    updateGenerateBtn();
+  }
+}
+
+/* ================================================================
+   SCRIPT PREVIEW RENDERING
+   ================================================================ */
+function renderScriptPreview(script) {
+  scriptCard.style.display = '';
+  let html = '';
+  for (const sec of script.sections) {
+    html += `<div class="script-section">
+      <h3>${escapeHtml(sec.heading)}</h3>
+      <p>${escapeHtml(sec.narration)}</p>
+      <div class="search-terms">🎥 ${escapeHtml(sec.visualDescription || '')}</div>
+    </div>`;
+  }
+  scriptPreview.innerHTML = html;
+}
+
+/* ================================================================
+   UTILITIES
+   ================================================================ */
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function escapeHtml(str) {
+  const el = document.createElement('span');
+  el.textContent = str;
+  return el.innerHTML;
+}
+
+function formatTime(totalSec) {
+  const sec = parseInt(totalSec, 10);
+  if (isNaN(sec) || sec < 0) return '0s';
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+/* ================================================================
+   EVENT HANDLERS
+   ================================================================ */
+btnGenerate.addEventListener('click', () => runPipeline());
+
+btnCancel.addEventListener('click', () => {
+  cancelled = true;
+  btnCancel.disabled = true;
+  btnCancel.textContent = 'Cancelling…';
+  setTimeout(() => { btnCancel.disabled = false; btnCancel.textContent = '✕ Cancel'; }, 3000);
+});
+
+btnDownload.addEventListener('click', () => {
+  if (!resultBlob) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(resultBlob);
+  const safeName = (generatedScript?.title || 'documentary').replace(/[^a-zA-Z0-9 -]/g, '').replace(/\s+/g, '-').toLowerCase();
+  a.download = safeName + '-' + Date.now() + '.mp4';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+});
+
+btnNewDoc.addEventListener('click', () => {
+  previewArea.classList.remove('active');
+  scriptCard.style.display = 'none';
+  pipelineCard.classList.remove('active');
+  subjectInput.value = '';
+  subjectInput.focus();
+  updateGenerateBtn();
+});
+
+// Allow Enter key to trigger generation
+subjectInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !btnGenerate.disabled) {
+    btnGenerate.click();
+  }
+});
+
+/* ── Init ────────────────────────────────────────────────── */
+loadKeys();
+subjectInput.focus();
+</script>
+</body>
+</html>
